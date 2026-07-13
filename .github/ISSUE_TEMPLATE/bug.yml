@@ -1,0 +1,25 @@
+name: Bug report
+description: Report a reproducible product or public protocol problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not disclose active seeds, hidden tests, verifier behavior, credentials, or personal trajectory data here. Use private vulnerability reporting for security-sensitive issues.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Include the public arena version and attempt ID, but no private data.
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device

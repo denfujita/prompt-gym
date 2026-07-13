@@ -1,0 +1,31 @@
+{
+  "name": "@prompt-gym/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -b tsconfig.json",
+    "typecheck": "tsc -b tsconfig.json --pretty false",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clerk/backend": "^2.12.1",
+    "@fastify/cors": "^11.1.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@prompt-gym/contracts": "*",
+    "@prompt-gym/core": "*",
+    "@prompt-gym/db": "*",
+    "bullmq": "^5.58.5",
+    "fastify": "^5.5.0",
+    "ioredis": "^5.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.0",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
