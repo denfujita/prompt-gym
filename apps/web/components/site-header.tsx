@@ -7,6 +7,7 @@ import { Brand } from "./brand";
 
 const nav = [
   { href: "/play", label: "Daily Gym", shortLabel: "Daily", symbol: "◇" },
+  { href: "/models", label: "Models", shortLabel: "Models", symbol: "◈" },
   { href: "/benchmarks", label: "Benchmark Lab", shortLabel: "Lab", symbol: "⚡" },
   { href: "/leaderboard", label: "Leaderboard", shortLabel: "Board", symbol: "↗" },
   { href: "/profile", label: "Profile", shortLabel: "Me", symbol: "●" },

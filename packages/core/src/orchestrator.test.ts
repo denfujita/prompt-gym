@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ChallengeManifest } from "@prompt-gym/contracts";
+import type { ChallengeManifest, ModelProfileV1, UsageV1 } from "@prompt-gym/contracts";
 import { LocalDemoChallengeService } from "./challenge-service.js";
 import {
   createDefaultArena,
@@ -63,8 +63,11 @@ class BenchmarkPreviewChallengeService extends LocalDemoChallengeService {
 }
 
 class NoopProvider implements ModelProvider {
-  readonly name = "scripted" as const;
   private counter = 0;
+  constructor(
+    readonly name: ModelProvider["name"] = "scripted",
+    private readonly usageProvider: UsageV1["provider"] = "scripted",
+  ) {}
   async respond(_request: ProviderRequest): Promise<ProviderResponse> {
     this.counter += 1;
     return {
@@ -74,7 +77,7 @@ class NoopProvider implements ModelProvider {
       toolCalls: [],
       usage: {
         schemaVersion: "usage.v1",
-        provider: "scripted",
+        provider: this.usageProvider,
         providerResponseId: `noop-${this.counter}`,
         resolvedModel: "prompt-gym-scripted-demo",
         inputTokens: 10,
@@ -115,6 +118,99 @@ describe("ranked release gate", () => {
 });
 
 describe("Prompt Gym run engine", () => {
+  it("pins an allowlisted model profile and forces new provider routes into practice", async () => {
+    const repository = new InMemoryPromptGymRepository();
+    const defaultArena = createDefaultArena(fixedClock.now());
+    const claudeProfile: ModelProfileV1 = {
+      schemaVersion: "model-profile.v1",
+      id: "claude-opus-4-6",
+      designArenaId: "claude-opus-4-6",
+      displayName: "Claude Opus 4.6",
+      creator: "Anthropic",
+      provider: "openrouter",
+      providerModelId: "anthropic/claude-opus-4.6",
+      availability: "available",
+      ranked: false,
+      reasoningMode: "standard",
+      priceVersion: "openrouter-reported-2026-07-13",
+      sourceSyncedAt: "2026-07-13",
+    };
+    const claudeArena = {
+      ...defaultArena,
+      id: `${defaultArena.seasonId}:openrouter:anthropic-claude-opus-4.6:standard:v1`,
+      modelAlias: claudeProfile.id,
+      resolvedModel: claudeProfile.providerModelId!,
+      priceVersion: claudeProfile.priceVersion,
+      ranked: false,
+    };
+    const service = new PromptGymService(
+      repository,
+      new LocalDemoChallengeService(),
+      defaultArena,
+      new RunEventHub(),
+      "assign",
+      "handle",
+      fixedClock,
+      { modelProfiles: [claudeProfile], arenas: [defaultArena, claudeArena] },
+    );
+
+    const attempt = await service.createAttempt(
+      { id: "multi-model-user" },
+      "signal-vault",
+      true,
+      claudeProfile.id,
+    );
+
+    expect(attempt).toMatchObject({
+      arenaId: claudeArena.id,
+      modelProfileId: claudeProfile.id,
+      ranked: false,
+    });
+    const started = (await repository.listEvents(attempt.id)).find(
+      (event) => event.type === "attempt.started",
+    );
+    expect(started?.payload).toMatchObject({
+      model: claudeProfile.providerModelId,
+      modelProfileId: claudeProfile.id,
+      ranked: false,
+    });
+  });
+
+  it("fails closed for unknown or unrouted model profiles", async () => {
+    const repository = new InMemoryPromptGymRepository();
+    const arena = createDefaultArena(fixedClock.now());
+    const unavailable: ModelProfileV1 = {
+      schemaVersion: "model-profile.v1",
+      id: "agi-01-swift",
+      designArenaId: "agi-01-swift",
+      displayName: "AGI-01 Swift",
+      creator: "LucidQuery",
+      provider: "openrouter",
+      availability: "needs-route",
+      ranked: false,
+      reasoningMode: "standard",
+      priceVersion: "unrouted",
+      sourceSyncedAt: "2026-07-13",
+    };
+    const service = new PromptGymService(
+      repository,
+      new LocalDemoChallengeService(),
+      arena,
+      new RunEventHub(),
+      "assign",
+      "handle",
+      fixedClock,
+      { modelProfiles: [unavailable], arenas: [arena] },
+    );
+
+    await expect(
+      service.createAttempt({ id: "unknown-model-user" }, "signal-vault", false, "made-up-model"),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(
+      service.createAttempt({ id: "unrouted-model-user" }, "signal-vault", false, unavailable.id),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
   it("fails closed instead of routing benchmark manifests through Daily Gym", async () => {
     const repository = new InMemoryPromptGymRepository();
     const service = new PromptGymService(
@@ -290,6 +386,51 @@ describe("Prompt Gym run engine", () => {
     ).resolves.toBeDefined();
   });
 
+  it("charges and closes an unresolved paid cancellation", async () => {
+    const repository = new InMemoryPromptGymRepository();
+    const service = new PromptGymService(
+      repository,
+      new LocalDemoChallengeService(),
+      createDefaultArena(fixedClock.now()),
+      new RunEventHub(),
+      "assign",
+      "handle",
+      fixedClock,
+    );
+    const attempt = await service.createAttempt({ id: "user-paid-stop" }, "signal-vault", false);
+    const turn = await service.queueTurn("user-paid-stop", attempt.id, "Inspect the panel.");
+    let markStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const provider: ModelProvider = {
+      name: "openrouter",
+      respond: (request) =>
+        new Promise((_resolve, reject) => {
+          markStarted?.();
+          if (request.signal?.aborted) {
+            reject(new PromptGymError("PROVIDER_AMBIGUOUS", "unresolved cancellation", 502));
+            return;
+          }
+          request.signal?.addEventListener(
+            "abort",
+            () => reject(new PromptGymError("PROVIDER_AMBIGUOUS", "unresolved cancellation", 502)),
+            { once: true },
+          );
+        }),
+    };
+    const engine = new RunEngine(service, provider, { safetySecret: "safe", clock: fixedClock });
+    const work = engine.processTurn(turn.id);
+
+    await started;
+    expect(await engine.stopTurn(attempt.id)).toBe(true);
+    await work;
+    expect(await service.requireAttempt(attempt.id)).toMatchObject({
+      status: "budget_exhausted",
+      actualCostNanoUsd: attempt.maxActualCostNanoUsd,
+    });
+  });
+
   it("unlocks hints after two unsolved turns and permanently marks the run assisted", async () => {
     const repository = new InMemoryPromptGymRepository();
     const service = new PromptGymService(
@@ -350,9 +491,11 @@ describe("Prompt Gym run engine", () => {
       fixedClock,
     );
     const created = await service.createAttempt({ id: "user-model-drift" }, "signal-vault", false);
-    await repository.updateAttempt(created.id, (attempt) => ({ ...attempt, ranked: true }));
     const turn = await service.queueTurn("user-model-drift", created.id, "Open the vault.");
-    const engine = new RunEngine(service, new NoopProvider(), { safetySecret: "safe", clock: fixedClock });
+    const engine = new RunEngine(service, new NoopProvider("openai", "openai"), {
+      safetySecret: "safe",
+      clock: fixedClock,
+    });
 
     await expect(engine.processTurn(turn.id)).rejects.toMatchObject({ code: "PROVIDER_ERROR" });
     expect((await service.requireAttempt(created.id)).competitionTokens).toBe(15);

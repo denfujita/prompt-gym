@@ -17,6 +17,7 @@ import {
   GENESIS_EVENT_HASH,
   PromptGymError,
   createVisibleRunEvent,
+  assertImmutableAttemptIdentity,
   type CostReservation,
   type CostReservationInput,
   type EventInput,
@@ -51,7 +52,10 @@ interface RunEventRow {
 
 export interface PostgresPromptGymRepositoryOptions {
   databaseUrl: string;
-  arena: ArenaConfig;
+  /** Legacy single-arena configuration. Prefer `arenas` for model-selectable deployments. */
+  arena?: ArenaConfig;
+  /** Immutable arenas this API/worker is allowed to serve. */
+  arenas?: ArenaConfig[];
   challenges: ChallengeManifest[];
   maxConnections?: number;
 }
@@ -171,6 +175,9 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
 
   constructor(private readonly options: PostgresPromptGymRepositoryOptions) {
     if (!options.databaseUrl) throw new Error("databaseUrl is required");
+    if (!options.arena && (!options.arenas || options.arenas.length === 0)) {
+      throw new Error("at least one arena is required");
+    }
     this.client = postgres(options.databaseUrl, { prepare: false, max: options.maxConnections ?? 10 });
     this.db = drizzle(this.client, { schema });
     this.ready = this.bootstrap();
@@ -186,7 +193,8 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
   }
 
   private async bootstrap(): Promise<void> {
-    const { arena, challenges } = this.options;
+    const { challenges } = this.options;
+    const arenas = this.options.arenas ?? (this.options.arena ? [this.options.arena] : []);
     await this.client.begin(async (tx) => {
       for (const manifest of challenges) {
         await tx`
@@ -206,50 +214,56 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
           on conflict (challenge_slug, version) do update set manifest = excluded.manifest
         `;
       }
-      await tx`
-        insert into arena
-          (id, season_id, model_alias, resolved_model, reasoning_effort, response_verbosity,
-           price_version, sandbox_image_digest, ranked, starts_at, ends_at)
-        values (
-          ${arena.id}, ${arena.seasonId}, ${arena.modelAlias}, ${arena.resolvedModel},
-          ${arena.reasoningEffort}, ${arena.responseVerbosity}, ${arena.priceVersion},
-          ${arena.sandboxImageDigest}, ${arena.ranked}, ${arena.startsAt}, ${arena.endsAt}
-        )
-        on conflict (id) do nothing
-      `;
-      const stored = await tx<
-        {
-          season_id: string;
-          model_alias: string;
-          resolved_model: string;
-          reasoning_effort: string;
-          response_verbosity: string;
-          price_version: string;
-          sandbox_image_digest: string;
-          ranked: boolean;
-          starts_at: Date | string;
-          ends_at: Date | string;
-        }[]
-      >`
-        select season_id, model_alias, resolved_model, reasoning_effort, response_verbosity,
-          price_version, sandbox_image_digest, ranked, starts_at, ends_at
-        from arena where id = ${arena.id}
-      `;
-      const row = stored[0];
-      if (
-        !row ||
-        row.season_id !== arena.seasonId ||
-        row.model_alias !== arena.modelAlias ||
-        row.resolved_model !== arena.resolvedModel ||
-        row.reasoning_effort !== arena.reasoningEffort ||
-        row.response_verbosity !== arena.responseVerbosity ||
-        row.price_version !== arena.priceVersion ||
-        row.sandbox_image_digest !== arena.sandboxImageDigest ||
-        row.ranked !== arena.ranked ||
-        iso(row.starts_at) !== iso(arena.startsAt) ||
-        iso(row.ends_at) !== iso(arena.endsAt)
-      ) {
-        throw new PromptGymError("CONFLICT", "Arena configuration is immutable; create a new arena id", 409);
+      for (const arena of arenas) {
+        await tx`
+          insert into arena
+            (id, season_id, model_alias, resolved_model, reasoning_effort, response_verbosity,
+             price_version, sandbox_image_digest, ranked, starts_at, ends_at)
+          values (
+            ${arena.id}, ${arena.seasonId}, ${arena.modelAlias}, ${arena.resolvedModel},
+            ${arena.reasoningEffort}, ${arena.responseVerbosity}, ${arena.priceVersion},
+            ${arena.sandboxImageDigest}, ${arena.ranked}, ${arena.startsAt}, ${arena.endsAt}
+          )
+          on conflict (id) do nothing
+        `;
+        const stored = await tx<
+          {
+            season_id: string;
+            model_alias: string;
+            resolved_model: string;
+            reasoning_effort: string;
+            response_verbosity: string;
+            price_version: string;
+            sandbox_image_digest: string;
+            ranked: boolean;
+            starts_at: Date | string;
+            ends_at: Date | string;
+          }[]
+        >`
+          select season_id, model_alias, resolved_model, reasoning_effort, response_verbosity,
+            price_version, sandbox_image_digest, ranked, starts_at, ends_at
+          from arena where id = ${arena.id}
+        `;
+        const row = stored[0];
+        if (
+          !row ||
+          row.season_id !== arena.seasonId ||
+          row.model_alias !== arena.modelAlias ||
+          row.resolved_model !== arena.resolvedModel ||
+          row.reasoning_effort !== arena.reasoningEffort ||
+          row.response_verbosity !== arena.responseVerbosity ||
+          row.price_version !== arena.priceVersion ||
+          row.sandbox_image_digest !== arena.sandboxImageDigest ||
+          row.ranked !== arena.ranked ||
+          iso(row.starts_at) !== iso(arena.startsAt) ||
+          iso(row.ends_at) !== iso(arena.endsAt)
+        ) {
+          throw new PromptGymError(
+            "CONFLICT",
+            "Arena configuration is immutable; create a new arena id",
+            409,
+          );
+        }
       }
     });
   }
@@ -363,9 +377,7 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
         if (!row) throw new PromptGymError("NOT_FOUND", "Attempt not found", 404);
         const current = asAttempt(row.state);
         const next = clone(update(clone(current)));
-        if (next.id !== id || next.userId !== current.userId || next.instance.id !== current.instance.id) {
-          throw new PromptGymError("CONFLICT", "Immutable attempt identity was changed", 409);
-        }
+        assertImmutableAttemptIdentity(current, next);
         await tx`
           update attempt set
             public_handle = ${next.publicHandle}, arena_id = ${next.arenaId}, ranked = ${next.ranked},
@@ -960,9 +972,6 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
         const row = rows[0];
         if (!row) throw new PromptGymError("CONFLICT", "Cost reservation is missing", 409);
         const reserved = numeric(row.reserved_nano_usd);
-        if (actualNanoUsd > reserved) {
-          throw new PromptGymError("CONFLICT", "Provider cost exceeded its reservation", 409);
-        }
         if (row.status === "settled") {
           if (numeric(row.actual_nano_usd) === actualNanoUsd) return;
           throw new PromptGymError("CONFLICT", "Cost reservation was already settled differently", 409);
@@ -978,12 +987,13 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
             actual_nano_usd = daily_cost_total.actual_nano_usd + excluded.actual_nano_usd,
             updated_at = now()
         `;
+        const overrunNanoUsd = Math.max(0, actualNanoUsd - reserved);
         await tx`
           insert into credit_ledger
             (user_id, attempt_id, entry_type, amount_nano_usd, utc_day, reservation_id, metadata)
           values
             (${row.user_id}, ${row.attempt_id}, 'reservation_release', ${-reserved}, ${row.utc_day}, ${reservationId}, '{}'::jsonb),
-            (${row.user_id}, ${row.attempt_id}, 'provider_spend', ${actualNanoUsd}, ${row.utc_day}, ${reservationId}, '{}'::jsonb)
+            (${row.user_id}, ${row.attempt_id}, 'provider_spend', ${actualNanoUsd}, ${row.utc_day}, ${reservationId}, ${jsonText({ overrunNanoUsd })}::jsonb)
         `;
       });
     } catch (error) {

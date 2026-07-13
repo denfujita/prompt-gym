@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeChallenge, normalizeEvent } from "./api";
+import { normalizeChallenge, normalizeEvent, normalizeModelProfile } from "./api";
+import { demoModelCatalog } from "./demo-data";
 
 const manifest = {
   slug: "signal-vault",
@@ -58,5 +59,51 @@ describe("live event normalization", () => {
     });
 
     expect(event.taskState).toBeUndefined();
+  });
+});
+
+describe("model catalog normalization", () => {
+  it("mirrors the complete 41-profile demo roster", () => {
+    expect(demoModelCatalog.models).toHaveLength(41);
+    expect(new Set(demoModelCatalog.models.map((model) => model.id)).size).toBe(41);
+  });
+
+  it("preserves the season-pinned profile fields used for model-isolated arenas", () => {
+    expect(
+      normalizeModelProfile({
+        id: "claude-sonnet-4-6",
+        schemaVersion: "model-profile.v1",
+        designArenaId: "claude-sonnet-4-6",
+        displayName: "Claude Sonnet 4.6",
+        creator: "Anthropic",
+        provider: "openrouter",
+        providerModelId: "anthropic/claude-sonnet-4.6",
+        availability: "available",
+        ranked: true,
+        reasoningMode: "standard",
+        priceVersion: "openrouter-2026-07",
+        sourceSyncedAt: "2026-07-13T00:00:00.000Z",
+      }),
+    ).toMatchObject({
+      id: "claude-sonnet-4-6",
+      creator: "Anthropic",
+      availability: "available",
+      ranked: true,
+    });
+  });
+
+  it("accepts an older route-status spelling without making it selectable", () => {
+    expect(
+      normalizeModelProfile({
+        id: "future-model",
+        displayName: "Future Model",
+        providerDisplayName: "Future Lab",
+        route: "needs_route",
+      }),
+    ).toMatchObject({
+      creator: "Future Lab",
+      availability: "needs-route",
+      ranked: false,
+    });
   });
 });

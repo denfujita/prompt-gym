@@ -8,6 +8,7 @@ import type {
   EligibilityRecord,
   JsonValue,
   LeaderboardEntry,
+  ModelProfileV1,
   PublicReplay,
   RunEvent,
   Turn,
@@ -93,8 +94,19 @@ export interface AuthenticatedUser {
   publicHandle?: string;
 }
 
+export interface PromptGymServiceOptions {
+  /** Public, allowlisted model profiles. A profile id is never accepted unless it has a matching arena. */
+  modelProfiles?: readonly ModelProfileV1[];
+  /** Immutable arenas available to this API and worker. The default arena is always included. */
+  arenas?: readonly ArenaConfig[];
+}
+
 export class PromptGymService {
   readonly events: VisibleEventWriter;
+  readonly modelProfiles: readonly ModelProfileV1[];
+  readonly arenas: readonly ArenaConfig[];
+  private readonly arenasById: ReadonlyMap<string, ArenaConfig>;
+  private readonly arenasByProfileId: ReadonlyMap<string, ArenaConfig>;
   constructor(
     readonly repository: PromptGymRepository,
     readonly challengeService: ChallengeServiceClient,
@@ -103,8 +115,44 @@ export class PromptGymService {
     private readonly assignmentSecret: string,
     private readonly handleSecret: string,
     private readonly clock: Clock = systemClock,
+    options: PromptGymServiceOptions = {},
   ) {
     this.events = new VisibleEventWriter(repository, eventHub);
+    this.modelProfiles = Object.freeze([...(options.modelProfiles ?? [])]);
+    const configuredArenas = options.arenas ?? [arena];
+    const uniqueArenas = new Map(configuredArenas.map((item) => [item.id, item]));
+    uniqueArenas.set(arena.id, arena);
+    this.arenas = Object.freeze([...uniqueArenas.values()]);
+    this.arenasById = uniqueArenas;
+    this.arenasByProfileId = new Map(this.arenas.map((item) => [item.modelAlias, item]));
+  }
+
+  get defaultModelProfileId(): string {
+    return this.arena.modelAlias;
+  }
+
+  getArena(id: string): ArenaConfig | undefined {
+    return this.arenasById.get(id);
+  }
+
+  requireArena(id: string): ArenaConfig {
+    const arena = this.getArena(id);
+    if (!arena)
+      throw new PromptGymError("PROVIDER_ERROR", "The run's pinned model arena is unavailable", 503);
+    return arena;
+  }
+
+  private selectArena(modelProfileId?: string): ArenaConfig {
+    if (!modelProfileId) return this.arena;
+    const profile = this.modelProfiles.find((item) => item.id === modelProfileId);
+    if (!profile)
+      throw new PromptGymError("INVALID_INPUT", "That model is not in this Prompt Gym season", 400);
+    if (profile.availability !== "available") {
+      throw new PromptGymError("CONFLICT", "That model does not have a validated tool route yet", 409);
+    }
+    const selected = this.arenasByProfileId.get(profile.id);
+    if (!selected) throw new PromptGymError("CONFLICT", "That model is not enabled on this deployment", 409);
+    return selected;
   }
 
   async listChallenges(
@@ -144,10 +192,12 @@ export class PromptGymService {
     user: AuthenticatedUser,
     challengeSlug: string,
     rankedRequested: boolean,
+    modelProfileId?: string,
   ): Promise<AttemptState> {
     const now = this.clock.now();
     const day = utcDay(now);
     const challenge = await this.getChallenge(challengeSlug);
+    const selectedArena = this.selectArena(modelProfileId);
     let active = await this.repository.findActiveAttempt(user.id);
     if (active && new Date(active.expiresAt) <= now) {
       await this.repository.updateAttempt(active.id, (current) => transitionAttempt(current, "expired", now));
@@ -162,14 +212,14 @@ export class PromptGymService {
     }
     // Refreshes and reconnects must resume the server-owned run rather than
     // consuming another start or presenting a false authentication error.
-    if (active?.challengeSlug === challengeSlug) return active;
+    if (active?.challengeSlug === challengeSlug && active.arenaId === selectedArena.id) return active;
     if (active)
       throw new PromptGymError("RUN_ACTIVE", "Finish or stop your current run first", 409, false, {
         attemptId: active.id,
       });
     const ranked =
-      rankedRequested && this.arena.ranked && this.challengeService.trustLevel === "remote-private";
-    if (ranked && (now < new Date(this.arena.startsAt) || now >= new Date(this.arena.endsAt))) {
+      rankedRequested && selectedArena.ranked && this.challengeService.trustLevel === "remote-private";
+    if (ranked && (now < new Date(selectedArena.startsAt) || now >= new Date(selectedArena.endsAt))) {
       throw new PromptGymError(
         "ATTEMPT_CLOSED",
         "This arena is closed; the next ranked season is not ready yet",
@@ -206,7 +256,7 @@ export class PromptGymService {
     ) {
       throw new PromptGymError("CHALLENGE_ERROR", "Challenge instance version does not match the arena", 502);
     }
-    if (ranked && envelope.instance.sandboxImageDigest !== this.arena.sandboxImageDigest) {
+    if (ranked && envelope.instance.sandboxImageDigest !== selectedArena.sandboxImageDigest) {
       await this.challengeService.cancelInstance(envelope.instance.id, id).catch(() => undefined);
       throw new PromptGymError(
         "CHALLENGE_ERROR",
@@ -214,7 +264,7 @@ export class PromptGymService {
         503,
         false,
         {
-          expected: this.arena.sandboxImageDigest,
+          expected: selectedArena.sandboxImageDigest,
           resolved: envelope.instance.sandboxImageDigest,
         },
       );
@@ -223,7 +273,8 @@ export class PromptGymService {
       id,
       userId: user.id,
       publicHandle: user.publicHandle ?? publicHandleForUser(this.handleSecret, user.id),
-      arenaId: this.arena.id,
+      arenaId: selectedArena.id,
+      modelProfileId: selectedArena.modelAlias,
       challengeSlug,
       challengeVersion: challenge.version,
       instance: envelope.instance,
@@ -252,7 +303,8 @@ export class PromptGymService {
       payload: {
         challengeSlug,
         ranked,
-        model: this.arena.resolvedModel,
+        model: selectedArena.resolvedModel,
+        modelProfileId: selectedArena.modelAlias,
         maxPrompts: challenge.maxPrompts,
         maxTokens: challenge.maxCompetitionTokens,
       },
@@ -377,12 +429,16 @@ export class PromptGymService {
     return { remaining: Math.max(0, 3 - used), total: 3, resetsAt: nextUtcDay(now) };
   }
 
-  async listLeaderboard(query: {
-    challengeSlug?: string;
-    instanceId?: string;
-    assisted?: boolean;
-  }): Promise<LeaderboardEntry[]> {
-    return this.repository.listLeaderboard({ arenaId: this.arena.id, ...query });
+  async listLeaderboard(
+    query: {
+      challengeSlug?: string;
+      instanceId?: string;
+      assisted?: boolean;
+    },
+    arenaId = this.arena.id,
+  ): Promise<LeaderboardEntry[]> {
+    this.requireArena(arenaId);
+    return this.repository.listLeaderboard({ arenaId, ...query });
   }
 
   async result(
@@ -409,11 +465,14 @@ export class PromptGymService {
           verifiedAt: String(verificationEvent.payload.verifiedAt ?? verificationEvent.createdAt),
         }
       : undefined;
-    const leaderboard = await this.listLeaderboard({
-      challengeSlug: attempt.challengeSlug,
-      instanceId: attempt.instance.seedCommitment,
-      assisted: attempt.assisted,
-    });
+    const leaderboard = await this.listLeaderboard(
+      {
+        challengeSlug: attempt.challengeSlug,
+        instanceId: attempt.instance.seedCommitment,
+        assisted: attempt.assisted,
+      },
+      attempt.arenaId,
+    );
     return { attempt, usage: await this.repository.listUsage(attemptId), verification, leaderboard };
   }
 
@@ -523,6 +582,11 @@ export class RunEngine {
         .reverse()
         .find((turn) => turn.status === "queued" || turn.status === "running");
       if (!persisted) return false;
+      // A different worker may still own a paid provider call. Without a
+      // distributed abort acknowledgement, reopening the attempt would permit
+      // overlapping spend and lose cancellation usage. Fail closed until that
+      // worker settles the call.
+      if (persisted.status === "running") return false;
       const now = this.clock.now();
       await this.service.repository.updateTurn(persisted.id, (turn) => ({
         ...turn,
@@ -558,8 +622,9 @@ export class RunEngine {
     const attempt = await this.service.requireAttempt(attemptId);
     if (attempt.status !== "running") return false;
     const now = this.clock.now();
+    const exhausted = attempt.actualCostNanoUsd >= attempt.maxActualCostNanoUsd;
     await this.service.repository.updateAttempt(attemptId, (current) =>
-      transitionAttempt(current, "awaiting_player", now),
+      transitionAttempt(current, exhausted ? "budget_exhausted" : "awaiting_player", now),
     );
     await this.service.events.append({
       attemptId,
@@ -578,6 +643,18 @@ export class RunEngine {
         message: "Model turn stopped by player; provider-reported usage still counts",
       },
     });
+    if (exhausted) {
+      await this.service.events.append({
+        attemptId,
+        turnId: target.turnId,
+        actor: "system",
+        type: "attempt.budget_exhausted",
+        payload: {
+          code: "COST_BUDGET",
+          message: "The unresolved provider call consumed the remaining covered budget",
+        },
+      });
+    }
     return true;
   }
 
@@ -650,6 +727,7 @@ export class RunEngine {
     });
 
     try {
+      const pinnedArena = this.service.requireArena(attempt.arenaId);
       const envelope = await this.service.repository.getInstanceEnvelope(attempt.id);
       if (!envelope) throw new PromptGymError("CHALLENGE_ERROR", "Challenge state is missing", 500);
       const history = await this.visibleConversation(attempt.id);
@@ -689,10 +767,13 @@ export class RunEngine {
             {
               requestId: randomUUID(),
               attemptId: attempt.id,
+              arenaId: pinnedArena.id,
+              modelProfileId: pinnedArena.modelAlias,
               instructions,
               messages: history,
               tools: envelope.allowedTools,
               safetyIdentifier: privacySafetyIdentifier(this.options.safetySecret, attempt.userId),
+              maxCostNanoUsd: reservation.reservedNanoUsd,
               continuation,
               toolOutputs,
               signal,
@@ -720,13 +801,17 @@ export class RunEngine {
           throw error;
         }
         const usageRecord = await this.recordUsage(turnId, attempt.id, response.usage);
-        if (attempt.ranked && response.resolvedModel !== this.service.arena.resolvedModel) {
+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+        if (
+          (attempt.ranked || response.usage.provider !== "scripted") &&
+          response.resolvedModel !== pinnedArena.resolvedModel
+        ) {
           throw new PromptGymError(
             "PROVIDER_ERROR",
             "The pinned model changed, so this arena was closed",
             503,
             false,
-            { expected: this.service.arena.resolvedModel, resolved: response.resolvedModel },
+            { expected: pinnedArena.resolvedModel, resolved: response.resolvedModel },
           );
         }
         if ((await this.service.repository.getTurn(turnId))?.status === "cancelled") return;

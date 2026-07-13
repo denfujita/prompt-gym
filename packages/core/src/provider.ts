@@ -19,10 +19,16 @@ export interface ProviderToolCall {
 export interface ProviderRequest {
   requestId: string;
   attemptId: string;
+  /** Server-owned arena identity used by provider routers. Never take this value from the browser. */
+  arenaId?: string;
+  /** Server-owned immutable profile identity, included for provider diagnostics only. */
+  modelProfileId?: string;
   instructions: string;
   messages: ProviderMessage[];
   tools: ToolDefinition[];
   safetyIdentifier: string;
+  /** Server-owned upper bound already reserved for this exact provider call. */
+  maxCostNanoUsd?: number;
   continuation?: unknown[];
   toolOutputs?: ProviderToolOutput[];
   signal?: AbortSignal;
@@ -37,7 +43,7 @@ export interface ProviderResponse {
   continuation?: unknown[];
 }
 export interface ModelProvider {
-  readonly name: "openai" | "scripted";
+  readonly name: "openai" | "openrouter" | "router" | "scripted";
   respond(request: ProviderRequest): Promise<ProviderResponse>;
 }
 
@@ -46,6 +52,42 @@ const isRecord = (value: unknown): value is UnknownRecord =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const number = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+
+const MAX_OUTPUT_TOKENS = 2_048;
+const PROVIDER_TEMPLATE_TOKEN_HEADROOM = 4_096;
+
+/**
+ * JSON bytes are a deliberately conservative upper bound for content tokens
+ * across byte-backed tokenizers. Extra headroom covers provider chat
+ * templates and model-specific control tokens that are not present in JSON.
+ */
+export function budgetedOutputTokens(input: {
+  requestBody: unknown;
+  maxCostNanoUsd?: number;
+  inputNanoUsdPerToken: number;
+  outputNanoUsdPerToken: number;
+}): number {
+  if (input.maxCostNanoUsd === undefined) return MAX_OUTPUT_TOKENS;
+  if (!Number.isSafeInteger(input.maxCostNanoUsd) || input.maxCostNanoUsd <= 0) {
+    throw new PromptGymError("COST_BUDGET", "This run has reached its covered API budget", 402);
+  }
+  const serializedBytes = new TextEncoder().encode(JSON.stringify(input.requestBody)).byteLength;
+  const inputTokenCeiling = serializedBytes + PROVIDER_TEMPLATE_TOKEN_HEADROOM;
+  const inputCostCeiling = inputTokenCeiling * input.inputNanoUsdPerToken;
+  const availableForOutput = input.maxCostNanoUsd - inputCostCeiling;
+  const outputTokens = Math.min(
+    MAX_OUTPUT_TOKENS,
+    Math.floor(availableForOutput / input.outputNanoUsdPerToken),
+  );
+  if (outputTokens < 1) {
+    throw new PromptGymError(
+      "COST_BUDGET",
+      "The remaining covered budget is too small for another model call",
+      402,
+    );
+  }
+  return outputTokens;
+}
 
 export class OpenAIResponsesProvider implements ModelProvider {
   readonly name = "openai" as const;
@@ -82,11 +124,17 @@ export class OpenAIResponsesProvider implements ModelProvider {
       })),
       reasoning: { effort: "medium" },
       text: { verbosity: "low" },
-      max_output_tokens: 2_048,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
       include: ["reasoning.encrypted_content"],
       safety_identifier: request.safetyIdentifier,
       store: false,
     };
+    body.max_output_tokens = budgetedOutputTokens({
+      requestBody: body,
+      maxCostNanoUsd: request.maxCostNanoUsd,
+      inputNanoUsdPerToken: this.price.inputNanoUsdPerToken + this.price.cacheWriteNanoUsdPerToken,
+      outputNanoUsdPerToken: this.price.outputNanoUsdPerToken,
+    });
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.baseUrl}/responses`, {
@@ -100,7 +148,6 @@ export class OpenAIResponsesProvider implements ModelProvider {
         signal: request.signal,
       });
     } catch (error) {
-      if (request.signal?.aborted) throw error;
       throw new PromptGymError(
         "PROVIDER_AMBIGUOUS",
         "The model call ended before its result could be confirmed",

@@ -20,13 +20,14 @@ export function LeaderboardClient() {
       setNeedsInstance(false);
     } else {
       const instanceId = localStorage.getItem(`prompt-gym:seed:${challenge}`);
-      if (!instanceId) {
+      const arenaId = localStorage.getItem(`prompt-gym:arena:${challenge}`);
+      if (!instanceId || !arenaId) {
         setEntries([]);
         setNeedsInstance(true);
       } else {
         setNeedsInstance(false);
         void getLeaderboard({
-          arena: "current",
+          arena: arenaId,
           challengeSlug: challenge,
           instanceId,
           assisted: track === "assisted",

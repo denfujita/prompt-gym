@@ -13,7 +13,7 @@ import type {
   UsageV1,
   VerificationResult,
 } from "@prompt-gym/contracts";
-import { createVisibleRunEvent, GENESIS_EVENT_HASH } from "./crypto.js";
+import { createVisibleRunEvent, GENESIS_EVENT_HASH, stableJson } from "./crypto.js";
 import { PromptGymError } from "./errors.js";
 
 export interface EventInput {
@@ -72,6 +72,28 @@ interface StoredLeaderboardEntry extends Omit<LeaderboardEntry, "rank"> {
   arenaId: string;
   challengeSlug: string;
   instanceId: string;
+}
+
+export function assertImmutableAttemptIdentity(current: AttemptState, next: AttemptState): void {
+  const immutable = (attempt: AttemptState) => ({
+    id: attempt.id,
+    userId: attempt.userId,
+    publicHandle: attempt.publicHandle,
+    arenaId: attempt.arenaId,
+    modelProfileId: attempt.modelProfileId,
+    challengeSlug: attempt.challengeSlug,
+    challengeVersion: attempt.challengeVersion,
+    instance: attempt.instance,
+    ranked: attempt.ranked,
+    maxPrompts: attempt.maxPrompts,
+    maxToolActionsPerTurn: attempt.maxToolActionsPerTurn,
+    maxCompetitionTokens: attempt.maxCompetitionTokens,
+    maxActualCostNanoUsd: attempt.maxActualCostNanoUsd,
+    startedAt: attempt.startedAt,
+  });
+  if (stableJson(immutable(current)) !== stableJson(immutable(next))) {
+    throw new PromptGymError("CONFLICT", "Immutable attempt identity was changed", 409);
+  }
 }
 
 export interface PromptGymRepository {
@@ -139,6 +161,7 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
   private readonly usages = new Map<string, UsageV1[]>();
   private readonly verifications = new Map<string, VerificationResult[]>();
   private readonly reservations = new Map<string, CostReservation>();
+  private readonly actualSpendByAttempt = new Map<string, number>();
   private readonly actualSpendByUserDay = new Map<string, number>();
   private readonly actualSpendByGlobalDay = new Map<string, number>();
   private readonly leaderboard = new Map<string, StoredLeaderboardEntry>();
@@ -151,6 +174,7 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
     this.envelopes.set(attempt.id, copy(envelope));
     this.events.set(attempt.id, []);
     this.usages.set(attempt.id, []);
+    this.actualSpendByAttempt.set(attempt.id, 0);
   }
 
   async getAttempt(id: string): Promise<AttemptState | undefined> {
@@ -162,9 +186,7 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
     const current = this.attempts.get(id);
     if (!current) throw new PromptGymError("NOT_FOUND", "Attempt not found", 404);
     const next = update(copy(current));
-    if (next.id !== id || next.userId !== current.userId || next.instance.id !== current.instance.id) {
-      throw new PromptGymError("CONFLICT", "Immutable attempt identity was changed", 409);
-    }
+    assertImmutableAttemptIdentity(current, next);
     this.attempts.set(id, copy(next));
     return copy(next);
   }
@@ -289,6 +311,10 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
     const chargedNanoUsd = pending.reduce((sum, item) => sum + item.reservedNanoUsd, 0);
     for (const reservation of pending) {
       this.reservations.delete(reservation.id);
+      this.actualSpendByAttempt.set(
+        reservation.attemptId,
+        (this.actualSpendByAttempt.get(reservation.attemptId) ?? 0) + reservation.reservedNanoUsd,
+      );
       const userKey = `${reservation.userId}:${reservation.utcDay}`;
       this.actualSpendByUserDay.set(
         userKey,
@@ -410,7 +436,10 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
     const pendingAttempt = pending
       .filter((item) => item.attemptId === input.attemptId)
       .reduce((sum, item) => sum + item.reservedNanoUsd, 0);
-    if (attempt.actualCostNanoUsd + pendingAttempt + input.amountNanoUsd > input.attemptLimitNanoUsd) {
+    if (
+      (this.actualSpendByAttempt.get(input.attemptId) ?? 0) + pendingAttempt + input.amountNanoUsd >
+      input.attemptLimitNanoUsd
+    ) {
       throw new PromptGymError("COST_BUDGET", "This run has reached its covered API budget", 402);
     }
     const userKey = `${input.userId}:${input.utcDay}`;
@@ -451,14 +480,14 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
   async settleCost(reservationId: string, actualNanoUsd: number): Promise<void> {
     const reservation = this.reservations.get(reservationId);
     if (!reservation) throw new PromptGymError("CONFLICT", "Cost reservation is missing", 409);
-    if (
-      !Number.isSafeInteger(actualNanoUsd) ||
-      actualNanoUsd < 0 ||
-      actualNanoUsd > reservation.reservedNanoUsd
-    ) {
-      throw new PromptGymError("CONFLICT", "Provider cost exceeded its reservation", 409);
+    if (!Number.isSafeInteger(actualNanoUsd) || actualNanoUsd < 0) {
+      throw new PromptGymError("CONFLICT", "Provider cost is invalid", 409);
     }
     this.reservations.delete(reservationId);
+    this.actualSpendByAttempt.set(
+      reservation.attemptId,
+      (this.actualSpendByAttempt.get(reservation.attemptId) ?? 0) + actualNanoUsd,
+    );
     const userKey = `${reservation.userId}:${reservation.utcDay}`;
     this.actualSpendByUserDay.set(userKey, (this.actualSpendByUserDay.get(userKey) ?? 0) + actualNanoUsd);
     this.actualSpendByGlobalDay.set(
@@ -515,6 +544,7 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
       this.usages.delete(attemptId);
       this.verifications.delete(attemptId);
       this.leaderboard.delete(attemptId);
+      this.actualSpendByAttempt.delete(attemptId);
       for (const [turnId, turn] of this.turns) if (turn.attemptId === attemptId) this.turns.delete(turnId);
     }
     this.consents.delete(userId);

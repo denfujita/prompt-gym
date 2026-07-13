@@ -99,6 +99,33 @@ describe("InMemoryPromptGymRepository", () => {
     ).resolves.toBeDefined();
   });
 
+  it("records defensive provider overruns instead of releasing real spend", async () => {
+    const repository = new InMemoryPromptGymRepository();
+    await repository.createAttempt(attempt(), envelope);
+    const reservation = await repository.reserveCost({
+      attemptId: "a1",
+      userId: "u1",
+      utcDay: "2026-07-12",
+      amountNanoUsd: 10_000,
+      attemptLimitNanoUsd: 250_000_000,
+      userDailyLimitNanoUsd: 750_000_000,
+      globalDailyLimitNanoUsd: 100_000_000_000,
+    });
+
+    await repository.settleCost(reservation.id, 12_000);
+    await expect(
+      repository.reserveCost({
+        attemptId: "a1",
+        userId: "u1",
+        utcDay: "2026-07-12",
+        amountNanoUsd: 249_988_001,
+        attemptLimitNanoUsd: 250_000_000,
+        userDailyLimitNanoUsd: 750_000_000,
+        globalDailyLimitNanoUsd: 100_000_000_000,
+      }),
+    ).rejects.toMatchObject({ code: "COST_BUDGET" });
+  });
+
   it("atomically queues a prompt and deduplicates score accounting", async () => {
     const repository = new InMemoryPromptGymRepository();
     await repository.createAttempt(attempt(), envelope);

@@ -27,13 +27,22 @@ const cardCopy: Record<Challenge["slug"], { role: string; format: string; cta: s
 export function ChallengeCard({
   challenge,
   mode,
+  modelDisplayName,
+  modelProfileId,
+  modelRanked = true,
   order,
 }: {
   challenge: Challenge;
   mode: "Puzzle" | "Build";
+  modelDisplayName?: string;
+  modelProfileId?: string;
+  modelRanked?: boolean;
   order: number;
 }) {
   const copy = cardCopy[challenge.slug];
+  const query = new URLSearchParams();
+  if (modelProfileId) query.set("model", modelProfileId);
+  query.set("mode", modelRanked ? "ranked" : "practice");
   return (
     <article className={`challenge-card accent-${challenge.accent}`}>
       <div className="challenge-card-top">
@@ -88,9 +97,14 @@ export function ChallengeCard({
           className="energy-cost"
           aria-label={apiMode === "demo" ? "Costs one demo energy pass" : "Uses the challenge's ranked start"}
         >
-          <span aria-hidden="true">⚡</span> {apiMode === "demo" ? "1 demo pass" : "Ranked start"}
+          <span aria-hidden="true">⚡</span>{" "}
+          {modelRanked ? (apiMode === "demo" ? "1 demo pass" : "Ranked start") : "Practice run"}
         </span>
-        <Link className="button button-dark" href={`/arena/${challenge.slug}`}>
+        <Link
+          aria-label={`${copy.cta} with ${modelDisplayName ?? "the default model"}`}
+          className="button button-dark"
+          href={`/arena/${challenge.slug}?${query.toString()}`}
+        >
           {copy.cta} <span aria-hidden="true">→</span>
         </Link>
       </div>

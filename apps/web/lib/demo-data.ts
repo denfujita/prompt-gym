@@ -1,4 +1,113 @@
-import type { AttemptResult, Challenge, ChallengeSlug, LeaderboardEntry, Replay, RunEvent } from "./types";
+import type {
+  AttemptResult,
+  Challenge,
+  ChallengeSlug,
+  LeaderboardEntry,
+  ModelCatalogV1,
+  ModelProfileV1,
+  Replay,
+  RunEvent,
+} from "./types";
+
+type DemoModelRow = readonly [
+  id: string,
+  displayName: string,
+  creator: string,
+  providerModelId?: string,
+  reasoningMode?: "standard" | "thinking",
+];
+
+// UI-only mirror. The server-owned, route/price/endpoint-attested catalog is
+// authoritative for live attempts.
+const DEMO_MODEL_ROWS: readonly DemoModelRow[] = [
+  ["gpt-5.6-terra", "GPT-5.6 Terra", "OpenAI", "gpt-5.6-terra"],
+  ["qwen3.6-plus", "Qwen3.6 Plus", "Alibaba", "qwen/qwen3.6-plus"],
+  ["qwen3.7-max", "Qwen3.7 Max", "Alibaba", "qwen/qwen3.7-max"],
+  ["qwen3.7-plus", "Qwen3.7 Plus", "Alibaba", "qwen/qwen3.7-plus"],
+  ["claude-fable-5", "Claude Fable 5", "Anthropic", "anthropic/claude-fable-5"],
+  ["claude-opus-4-6", "Claude Opus 4.6", "Anthropic", "anthropic/claude-opus-4.6"],
+  [
+    "claude-opus-4-6-thinking",
+    "Claude Opus 4.6 (Thinking)",
+    "Anthropic",
+    "anthropic/claude-opus-4.6",
+    "thinking",
+  ],
+  ["claude-opus-4-7-thinking", "Claude Opus 4.7", "Anthropic", "anthropic/claude-opus-4.7", "thinking"],
+  ["claude-opus-4-8", "Claude Opus 4.8", "Anthropic", "anthropic/claude-opus-4.8"],
+  ["claude-sonnet-4-5", "Claude Sonnet 4.5", "Anthropic", "anthropic/claude-sonnet-4.5"],
+  [
+    "claude-sonnet-4-5-thinking",
+    "Claude Sonnet 4.5 (Thinking)",
+    "Anthropic",
+    "anthropic/claude-sonnet-4.5",
+    "thinking",
+  ],
+  ["claude-sonnet-4-6", "Claude Sonnet 4.6", "Anthropic", "anthropic/claude-sonnet-4.6"],
+  ["claude-sonnet-5", "Claude Sonnet 5", "Anthropic", "anthropic/claude-sonnet-5"],
+  ["deepseek-v4-flash", "DeepSeek-V4-Flash", "DeepSeek", "deepseek/deepseek-v4-flash"],
+  ["deepseek-v4-pro", "DeepSeek-V4-Pro", "DeepSeek", "deepseek/deepseek-v4-pro"],
+  ["gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview", "Google", "google/gemini-3.1-pro-preview"],
+  ["gemini-3.5-flash", "Gemini 3.5 Flash", "Google", "google/gemini-3.5-flash"],
+  ["mercury-2", "Mercury 2", "Inception", "inception/mercury-2"],
+  ["deepocto", "MiniMax M2.7", "MiniMax", "minimax/minimax-m2.7"],
+  ["minimax-m3", "MiniMax M3", "MiniMax", "minimax/minimax-m3"],
+  ["kimi-k2.5", "Kimi K2.5 (Thinking)", "Moonshot AI", "moonshotai/kimi-k2.5", "thinking"],
+  ["kimi-k2.6", "Kimi K2.6", "Moonshot AI", "moonshotai/kimi-k2.6"],
+  ["kimi-k2.7-code", "Kimi K2.7 Code", "Moonshot AI", "moonshotai/kimi-k2.7-code"],
+  ["nex-n2-pro", "Nex N2 Pro", "Nex AGI", "nex-agi/nex-n2-pro"],
+  ["nemotron-3-ultra-550b-a55b", "Nemotron 3 Ultra", "NVIDIA", "nvidia/nemotron-3-ultra-550b-a55b"],
+  ["gpt-5.5", "GPT-5.5", "OpenAI", "openai/gpt-5.5"],
+  ["gpt-5.6-luna", "GPT-5.6 Luna", "OpenAI", "openai/gpt-5.6-luna"],
+  ["gpt-5.6-sol", "GPT-5.6 Sol", "OpenAI", "openai/gpt-5.6-sol"],
+  ["step-3.7-flash", "Step 3.7 Flash", "StepFun", "stepfun/step-3.7-flash"],
+  ["hy3", "Hy3", "Tencent", "tencent/hy3"],
+  ["grok-4-20-beta-non-reasoning", "Grok 4.20 Beta", "xAI", "x-ai/grok-4.20"],
+  ["grok-4-20-beta-reasoning", "Grok 4.20 Beta (Reasoning)", "xAI", "x-ai/grok-4.20", "thinking"],
+  ["grok-4.3", "Grok 4.3", "xAI", "x-ai/grok-4.3"],
+  ["yoda", "Grok 4.5", "xAI", "x-ai/grok-4.5"],
+  ["mimo-v2.5", "MiMo-V2.5", "Xiaomi", "xiaomi/mimo-v2.5"],
+  ["mimo-v2.5-pro", "MiMo-V2.5-Pro", "Xiaomi", "xiaomi/mimo-v2.5-pro"],
+  ["glm-5-turbo", "GLM 5 Turbo", "Zhipu AI", "z-ai/glm-5-turbo"],
+  ["coconut", "GLM 5.1", "Zhipu AI", "z-ai/glm-5.1"],
+  ["glm-5.2", "GLM 5.2", "Zhipu AI", "z-ai/glm-5.2"],
+  ["glm-5v-turbo", "GLM 5V Turbo", "Zhipu AI", "z-ai/glm-5v-turbo"],
+  ["agi-01-swift", "AGI-01 Swift", "LucidQuery"],
+];
+
+const demoModelProfile = ([
+  id,
+  displayName,
+  creator,
+  providerModelId,
+  reasoningMode = "standard",
+]: DemoModelRow): ModelProfileV1 => {
+  const direct = id === "gpt-5.6-terra";
+  return {
+    schemaVersion: "model-profile.v1",
+    id,
+    designArenaId: id,
+    displayName,
+    creator,
+    provider: direct ? "openai" : "openrouter",
+    ...(providerModelId ? { providerModelId } : {}),
+    ...(providerModelId ? { openRouterModelId: direct ? "openai/gpt-5.6-terra" : providerModelId } : {}),
+    availability: providerModelId ? "available" : "needs-route",
+    ranked: direct,
+    reasoningMode,
+    priceVersion: direct
+      ? "terra-2026-07-12"
+      : providerModelId
+        ? "openrouter-reported-2026-07-13"
+        : "unrouted",
+    sourceSyncedAt: "2026-07-13T00:00:00.000Z",
+  };
+};
+
+export const demoModelCatalog: ModelCatalogV1 = {
+  defaultModelId: "gpt-5.6-terra",
+  models: DEMO_MODEL_ROWS.map(demoModelProfile),
+};
 
 export const challenges: Challenge[] = [
   {

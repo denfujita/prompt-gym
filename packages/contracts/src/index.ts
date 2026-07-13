@@ -48,6 +48,42 @@ export type RunEventType = (typeof RUN_EVENT_TYPES)[number];
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
+/**
+ * Public, season-pinned routing metadata for a playable model. Model profiles
+ * are immutable inputs to an arena: changing a route creates a new profile or
+ * season instead of silently changing the model behind a leaderboard.
+ */
+export interface ModelProfileV1 {
+  schemaVersion: "model-profile.v1";
+  /** Prompt Gym's stable public identifier. Thinking variants have their own id. */
+  id: string;
+  designArenaId: string;
+  displayName: string;
+  creator: string;
+  /** Direct OpenAI Responses or OpenRouter's OpenAI-compatible chat API. */
+  provider: "openai" | "openrouter";
+  /** Exact provider route. Absent only when Design Arena has not published one. */
+  providerModelId?: string;
+  /** Design Arena's exact OpenRouter route, including for directly routed models. */
+  openRouterModelId?: string;
+  /** Frozen OpenRouter endpoint tag. Aggregator practice never load-balances endpoints. */
+  providerEndpoint?: string;
+  availability: "available" | "needs-route";
+  ranked: boolean;
+  reasoningMode: "standard" | "thinking";
+  priceVersion: string;
+  /**
+   * Reviewed provider price ceiling used to bound every subsidized call before
+   * it is sent. Omitted only for profiles without a validated provider route.
+   */
+  priceCeiling?: {
+    inputNanoUsdPerToken: number;
+    outputNanoUsdPerToken: number;
+  };
+  /** ISO date for the checked-in Design Arena snapshot. */
+  sourceSyncedAt: string;
+}
+
 export const BENCHMARK_TIERS = ["invalid", "bronze", "silver", "gold"] as const;
 export type BenchmarkTier = (typeof BENCHMARK_TIERS)[number];
 
@@ -210,7 +246,7 @@ export interface ArenaConfig {
   seasonId: string;
   modelAlias: string;
   resolvedModel: string;
-  reasoningEffort: "medium";
+  reasoningEffort: "default" | "none" | "medium";
   responseVerbosity: "low";
   priceVersion: string;
   sandboxImageDigest: string;
@@ -231,6 +267,8 @@ export interface AttemptState {
   userId: string;
   publicHandle: string;
   arenaId: string;
+  /** Stable model profile selected before the attempt starts. */
+  modelProfileId?: string;
   challengeSlug: string;
   challengeVersion: string;
   instance: TaskInstanceRef;
@@ -280,7 +318,7 @@ export interface UsageV1 {
   schemaVersion: "usage.v1";
   /** Populated by storage when this provider call belongs to a persisted turn. */
   turnId?: string;
-  provider: "openai" | "scripted";
+  provider: "openai" | "openrouter" | "scripted";
   providerResponseId: string;
   resolvedModel: string;
   inputTokens: number;
@@ -410,6 +448,12 @@ export const createAttemptRequestSchema = z
       .max(80)
       .regex(/^[a-z0-9-]+$/),
     ranked: z.boolean().optional().default(true),
+    modelProfileId: z
+      .string()
+      .min(1)
+      .max(120)
+      .regex(/^[a-z0-9][a-z0-9._-]*$/)
+      .optional(),
   })
   .strict();
 export const createTurnRequestSchema = z.object({ prompt: z.string().trim().min(1).max(4_000) }).strict();

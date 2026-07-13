@@ -11,16 +11,23 @@ import {
 import {
   InlineRunDispatcher,
   LocalDemoChallengeService,
+  ModelProviderRouter,
   OpenAIResponsesProvider,
+  OpenRouterChatProvider,
   PromptGymError,
   PromptGymService,
   RunEngine,
   RunEventHub,
+  createModelArenas,
+  defaultModelArena,
+  deploymentModelCatalog,
+  assertModelDeploymentDigest,
+  resolveArenaSeasonAnchor,
   resolveRankedPlayEnabled,
   ScriptedModelProvider,
-  createDefaultArena,
   HttpChallengeServiceClient,
   InMemoryPromptGymRepository,
+  type ModelProvider,
   type RunDispatcher,
 } from "@prompt-gym/core";
 import { PostgresPromptGymRepository } from "@prompt-gym/db";
@@ -64,15 +71,32 @@ export function validateProductionEnvironment(env: NodeJS.ProcessEnv): void {
     "PUBLIC_HANDLE_SECRET",
     "SAFETY_IDENTIFIER_SECRET",
     "SANDBOX_IMAGE_DIGEST",
+    "ARENA_SEASON_ANCHOR",
+    "MODEL_DEPLOYMENT_DIGEST",
   ];
   const missing = required.filter((name) => !env[name]);
   if (missing.length) throw new Error(`Production configuration is missing: ${missing.join(", ")}`);
   if (env.ALLOW_DEMO_AUTH === "true") throw new Error("ALLOW_DEMO_AUTH must be false in production");
   if (!/^sha256:[a-f0-9]{64}$/u.test(env.SANDBOX_IMAGE_DIGEST!))
     throw new Error("SANDBOX_IMAGE_DIGEST must be a pinned sha256 digest");
+  resolveArenaSeasonAnchor(env.ARENA_SEASON_ANCHOR);
   const origins = env.APP_ORIGIN!.split(",").map((origin) => origin.trim());
   if (origins.some((origin) => !origin.startsWith("https://")))
     throw new Error("Production APP_ORIGIN values must use HTTPS");
+  if (env.OPENROUTER_BASE_URL) {
+    let openRouterUrl: URL;
+    try {
+      openRouterUrl = new URL(env.OPENROUTER_BASE_URL);
+    } catch {
+      throw new Error("OPENROUTER_BASE_URL must be a valid URL");
+    }
+    if (openRouterUrl.protocol !== "https:") {
+      throw new Error("OPENROUTER_BASE_URL must use HTTPS in production");
+    }
+    if (openRouterUrl.hostname !== "openrouter.ai" || openRouterUrl.username || openRouterUrl.password) {
+      throw new Error("OPENROUTER_BASE_URL must use the credential-free openrouter.ai origin");
+    }
+  }
   resolveRankedPlayEnabled({
     enabled: env.RANKED_PLAY_ENABLED,
     isolationAttestation: env.RANKED_ISOLATION_ATTESTATION,
@@ -105,6 +129,21 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
   });
 
   app.get("/healthz", async () => ({ ok: true }));
+  app.get("/v1/models", async () => {
+    const arenasByProfile = new Map(deps.service.arenas.map((arena) => [arena.modelAlias, arena]));
+    return {
+      models: deps.service.modelProfiles.map((profile) => {
+        const arena = arenasByProfile.get(profile.id);
+        return {
+          ...profile,
+          availability:
+            profile.availability === "available" && arena ? ("available" as const) : ("needs-route" as const),
+          ranked: Boolean(profile.ranked && arena?.ranked),
+        };
+      }),
+      defaultModelId: deps.service.defaultModelProfileId,
+    };
+  });
   app.get("/v1/challenges", async (request) => {
     const auth = await deps.auth.optional(request);
     return deps.service.listChallenges(auth?.userId);
@@ -130,6 +169,7 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
         { id: auth.userId, ...(auth.publicHandle ? { publicHandle: auth.publicHandle } : {}) },
         body.challengeSlug,
         body.ranked,
+        body.modelProfileId,
       );
       return reply
         .status(201)
@@ -240,8 +280,12 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
   });
 
   app.get<{ Params: { arena: string } }>("/v1/leaderboards/:arena", async (request) => {
-    if (request.params.arena !== deps.service.arena.id && request.params.arena !== "current")
-      throw new PromptGymError("NOT_FOUND", "Arena not found", 404);
+    const arena =
+      request.params.arena === "current"
+        ? deps.service.arena
+        : (deps.service.getArena(request.params.arena) ??
+          deps.service.arenas.find((candidate) => candidate.modelAlias === request.params.arena));
+    if (!arena) throw new PromptGymError("NOT_FOUND", "Arena not found", 404);
     const query = parse(leaderboardQuerySchema, request.query);
     if (!query.challengeSlug || !query.instanceId) {
       throw new PromptGymError(
@@ -251,12 +295,15 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
       );
     }
     return {
-      arena: deps.service.arena,
-      entries: await deps.service.listLeaderboard({
-        challengeSlug: query.challengeSlug,
-        instanceId: query.instanceId,
-        assisted: query.assisted === undefined ? undefined : query.assisted === "true",
-      }),
+      arena,
+      entries: await deps.service.listLeaderboard(
+        {
+          challengeSlug: query.challengeSlug,
+          instanceId: query.instanceId,
+          assisted: query.assisted === undefined ? undefined : query.assisted === "true",
+        },
+        arena.id,
+      ),
       scope: { challengeSlug: query.challengeSlug, instanceId: query.instanceId },
     };
   });
@@ -317,21 +364,33 @@ export async function dependenciesFromEnvironment(): Promise<
     env.CHALLENGE_SERVICE_URL && env.CHALLENGE_SERVICE_TOKEN
       ? new HttpChallengeServiceClient(env.CHALLENGE_SERVICE_URL, env.CHALLENGE_SERVICE_TOKEN)
       : new LocalDemoChallengeService();
-  const configuredArena = createDefaultArena(
-    new Date(),
-    env.OPENAI_MODEL ?? "gpt-5.6-terra",
-    env.SANDBOX_IMAGE_DIGEST,
-    resolveRankedPlayEnabled({
-      enabled: env.RANKED_PLAY_ENABLED,
-      isolationAttestation: env.RANKED_ISOLATION_ATTESTATION,
-    }),
+  const scriptedLocal = !env.OPENAI_API_KEY && env.NODE_ENV !== "production";
+  const deployableProfiles = deploymentModelCatalog({
+    openAiEnabled: Boolean(env.OPENAI_API_KEY) || scriptedLocal,
+    openRouterEnabled: Boolean(env.OPENROUTER_API_KEY),
+  }).map((profile) =>
+    scriptedLocal && profile.provider === "openai" ? { ...profile, ranked: false } : profile,
   );
-  // Scripted local play is useful for product testing, but it must never create
-  // entries in a model-specific paid arena.
-  const arena = env.OPENAI_API_KEY ? configuredArena : { ...configuredArena, ranked: false };
+  const arenas = createModelArenas({
+    profiles: deployableProfiles,
+    now: resolveArenaSeasonAnchor(env.ARENA_SEASON_ANCHOR),
+    sandboxImageDigest: env.SANDBOX_IMAGE_DIGEST,
+    rankedTerra:
+      Boolean(env.OPENAI_API_KEY) &&
+      resolveRankedPlayEnabled({
+        enabled: env.RANKED_PLAY_ENABLED,
+        isolationAttestation: env.RANKED_ISOLATION_ATTESTATION,
+      }),
+  });
+  const modelProfiles = deployableProfiles.map((profile) => ({
+    ...profile,
+    ranked: arenas.find((candidate) => candidate.modelAlias === profile.id)?.ranked ?? false,
+  }));
+  assertModelDeploymentDigest(env.MODEL_DEPLOYMENT_DIGEST, modelProfiles, arenas);
+  const arena = defaultModelArena(arenas);
   const challenges = await challengeService.listChallenges();
   const durableRepository = env.DATABASE_URL
-    ? new PostgresPromptGymRepository({ databaseUrl: env.DATABASE_URL, arena, challenges })
+    ? new PostgresPromptGymRepository({ databaseUrl: env.DATABASE_URL, arenas, challenges })
     : undefined;
   await durableRepository?.initialize();
   const repository = durableRepository ?? new InMemoryPromptGymRepository();
@@ -343,10 +402,36 @@ export async function dependenciesFromEnvironment(): Promise<
     eventHub,
     env.INSTANCE_ASSIGNMENT_SECRET ?? "local-assignment-only",
     env.PUBLIC_HANDLE_SECRET ?? "local-handles-only",
+    undefined,
+    { modelProfiles, arenas },
   );
-  const provider = env.OPENAI_API_KEY
-    ? new OpenAIResponsesProvider(env.OPENAI_API_KEY, env.OPENAI_MODEL ?? "gpt-5.6-terra")
-    : new ScriptedModelProvider();
+  const providers = new Map<string, ModelProvider>();
+  for (const modelArena of arenas) {
+    const profile = modelProfiles.find((candidate) => candidate.id === modelArena.modelAlias);
+    if (!profile?.providerModelId) continue;
+    if (profile.provider === "openai") {
+      providers.set(
+        modelArena.id,
+        env.OPENAI_API_KEY
+          ? new OpenAIResponsesProvider(env.OPENAI_API_KEY, profile.providerModelId)
+          : new ScriptedModelProvider(),
+      );
+      continue;
+    }
+    if (env.OPENROUTER_API_KEY) {
+      providers.set(
+        modelArena.id,
+        new OpenRouterChatProvider({
+          apiKey: env.OPENROUTER_API_KEY,
+          profile,
+          baseUrl: env.OPENROUTER_BASE_URL,
+          appUrl: env.APP_ORIGIN?.split(",")[0]?.trim(),
+          appName: env.OPENROUTER_APP_NAME ?? "Prompt Gym",
+        }),
+      );
+    }
+  }
+  const provider = new ModelProviderRouter(providers);
   const engine = new RunEngine(service, provider, {
     safetySecret: env.SAFETY_IDENTIFIER_SECRET ?? "local-safety-only",
     globalDailyCostLimitNanoUsd: env.GLOBAL_DAILY_COST_USD

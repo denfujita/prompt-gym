@@ -26,7 +26,9 @@ export type AttemptStatus = "ready" | "running" | "thinking" | "solved" | "faile
 
 export interface Attempt {
   id: string;
+  arenaId?: string;
   challengeSlug: ChallengeSlug;
+  modelProfileId?: string;
   status: AttemptStatus;
   mode: "ranked" | "practice";
   competitionTokens: number;
@@ -35,6 +37,37 @@ export interface Attempt {
   assisted: boolean;
   seedCommitment?: string;
   createdAt: string;
+}
+
+export type ModelRouteProvider = "openai" | "openrouter";
+
+export type ModelAvailability = "available" | "needs-route";
+
+/** Public, season-pinned model configuration returned by GET /v1/models. */
+export interface ModelProfileV1 {
+  schemaVersion: "model-profile.v1";
+  id: string;
+  designArenaId: string;
+  displayName: string;
+  creator: string;
+  provider: ModelRouteProvider;
+  providerModelId?: string;
+  openRouterModelId?: string;
+  providerEndpoint?: string;
+  availability: ModelAvailability;
+  ranked: boolean;
+  reasoningMode: "standard" | "thinking";
+  priceVersion: string;
+  priceCeiling?: {
+    inputNanoUsdPerToken: number;
+    outputNanoUsdPerToken: number;
+  };
+  sourceSyncedAt: string;
+}
+
+export interface ModelCatalogV1 {
+  models: ModelProfileV1[];
+  defaultModelId: string;
 }
 
 export type RunEventType =

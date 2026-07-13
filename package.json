@@ -15,7 +15,9 @@
     "test:watch": "vitest",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "format": "prettier --check ."
+    "format": "prettier --check .",
+    "models:sync": "node scripts/sync-design-arena-models.mjs",
+    "models:digest": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/model-deployment-digest.ts"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

@@ -317,7 +317,7 @@ export const costReservations = pgTable(
     index("cost_reservation_day_idx").on(table.utcDay, table.status),
     check(
       "cost_reservation_amount_ck",
-      sql`${table.reservedNanoUsd} > 0 and (${table.actualNanoUsd} is null or (${table.actualNanoUsd} >= 0 and ${table.actualNanoUsd} <= ${table.reservedNanoUsd}))`,
+      sql`${table.reservedNanoUsd} > 0 and (${table.actualNanoUsd} is null or ${table.actualNanoUsd} >= 0)`,
     ),
   ],
 );

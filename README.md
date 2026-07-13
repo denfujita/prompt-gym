@@ -14,7 +14,7 @@ This public repository contains the product UI, orchestration API, scoring and a
 - Prompt-only coaching, live event playback, exact token accounting, per-instance leaderboards, delayed opt-in replays, and separate commercial-data consent.
 - A scripted **Kernel Sprint** Benchmark Lab walkthrough showing iterative, correctness-gated GPU optimization. It uses no API or GPU; the ranked evaluator is a documented release gate.
 - A scripted local provider and in-memory persistence so the full experience runs without cloud credentials.
-- A real OpenAI Responses API adapter for `gpt-5.6-terra` when `OPENAI_API_KEY` is configured.
+- A frozen 41-model Design Arena-derived code roster: direct OpenAI Responses for ranked GPT-5.6 Terra, exact OpenRouter chat/tool harnesses for 39 practice models, and an explicit unrouted state for AGI-01 Swift.
 
 ## Local development
 
@@ -45,7 +45,7 @@ npm test
 npm run build
 ```
 
-See [the architecture](docs/architecture.md), [Puzzle and Build gameplay](docs/gameplay-v2.md), [Benchmark Lab contract](docs/benchmark-lab.md), [prompt storage](docs/prompt-storage.md), [product contract](docs/product-spec.md), [pricing and subsidy policy](docs/pricing-and-subsidy.md), [data governance](docs/data-governance.md), [security model](docs/security.md), [deployment runbook](docs/deployment.md), and [research basis](docs/research-basis.md).
+See [the architecture](docs/architecture.md), [model harnesses](docs/model-harnesses.md), [Puzzle and Build gameplay](docs/gameplay-v2.md), [Benchmark Lab contract](docs/benchmark-lab.md), [prompt storage](docs/prompt-storage.md), [product contract](docs/product-spec.md), [pricing and subsidy policy](docs/pricing-and-subsidy.md), [data governance](docs/data-governance.md), [security model](docs/security.md), [deployment runbook](docs/deployment.md), and [research basis](docs/research-basis.md).
 
 ## License
 

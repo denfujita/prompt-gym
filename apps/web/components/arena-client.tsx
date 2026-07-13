@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
-import { apiMode, cancelAttempt, createAttempt, submitTurn, subscribeToAttempt, unlockHint } from "@/lib/api";
+import {
+  apiMode,
+  cancelAttempt,
+  createAttempt,
+  listModels,
+  submitTurn,
+  subscribeToAttempt,
+  unlockHint,
+} from "@/lib/api";
 import { deriveArenaRunState, type ArenaRunState } from "@/lib/arena-state";
 import { demoTurns, initialArenaEvents } from "@/lib/demo-data";
 import { formatTokens } from "@/lib/format";
@@ -37,7 +45,15 @@ const promptPlaceholders: Record<Challenge["slug"], string> = {
   "clone-the-gremlin": "What should your AI probe or fix next?",
 };
 
-export function ArenaClient({ challenge }: { challenge: Challenge }) {
+export function ArenaClient({
+  attemptMode = "ranked",
+  challenge,
+  modelProfileId,
+}: {
+  attemptMode?: "ranked" | "practice";
+  challenge: Challenge;
+  modelProfileId?: string;
+}) {
   const playMode = challenge.playMode === "build" ? "Build" : "Puzzle";
   const coachingCue =
     playMode === "Build"
@@ -57,6 +73,7 @@ export function ArenaClient({ challenge }: { challenge: Challenge }) {
   const [activeTab, setActiveTab] = useState<"task" | "model">("task");
   const [briefExpanded, setBriefExpanded] = useState(false);
   const [connectionNote, setConnectionNote] = useState("Preparing run…");
+  const [modelLabel, setModelLabel] = useState("Pinned model");
   const timelineRef = useRef<HTMLDivElement>(null);
   const timersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const authoritativeEventsRef = useRef<RunEvent[]>([]);
@@ -77,14 +94,30 @@ export function ArenaClient({ challenge }: { challenge: Challenge }) {
 
   useEffect(() => {
     let active = true;
+    void listModels().then((catalog) => {
+      if (!active) return;
+      const selected =
+        catalog.models.find((model) => model.id === modelProfileId) ??
+        catalog.models.find((model) => model.id === catalog.defaultModelId);
+      if (selected) setModelLabel(selected.displayName);
+    });
+    return () => {
+      active = false;
+    };
+  }, [modelProfileId]);
+
+  useEffect(() => {
+    let active = true;
     let unsubscribe: () => void = () => {};
 
-    void createAttempt(challenge.slug, apiMode === "demo" ? "practice" : "ranked")
+    void createAttempt(challenge.slug, apiMode === "demo" ? "practice" : attemptMode, modelProfileId)
       .then(({ attempt: created, events: bootstrapEvents }) => {
         if (!active) return;
         setAttempt(created);
         if (created.seedCommitment)
           localStorage.setItem(`prompt-gym:seed:${created.challengeSlug}`, created.seedCommitment);
+        if (created.arenaId)
+          localStorage.setItem(`prompt-gym:arena:${created.challengeSlug}`, created.arenaId);
         if (bootstrapEvents.length) setEvents(bootstrapEvents);
         authoritativeEventsRef.current = bootstrapEvents;
         applyRunState(deriveArenaRunState(created, bootstrapEvents));
@@ -127,7 +160,7 @@ export function ArenaClient({ challenge }: { challenge: Challenge }) {
       unsubscribe();
       timersRef.current.forEach(clearTimeout);
     };
-  }, [challenge.slug]);
+  }, [attemptMode, challenge.slug, modelProfileId]);
 
   useEffect(() => {
     const target = timelineRef.current;
@@ -243,7 +276,9 @@ export function ArenaClient({ challenge }: { challenge: Challenge }) {
             <div>
               <span className="arena-mode-kicker">{playMode} · you coach</span>
               <h1>{challenge.name}</h1>
-              <p>{connectionNote}</p>
+              <p>
+                {connectionNote} <span aria-hidden="true">·</span> {modelLabel} locked
+              </p>
             </div>
           </div>
           <TokenMeter tokens={tokens} />

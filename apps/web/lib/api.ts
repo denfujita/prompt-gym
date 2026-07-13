@@ -1,5 +1,6 @@
 import {
   challenges as demoChallenges,
+  demoModelCatalog,
   demoReplay,
   demoResult,
   getChallenge,
@@ -12,6 +13,8 @@ import type {
   ChallengeSlug,
   ConsentPreferences,
   LeaderboardEntry,
+  ModelCatalogV1,
+  ModelProfileV1,
   Replay,
   RunEvent,
 } from "./types";
@@ -50,8 +53,10 @@ type WireChallenge = {
 
 type WireAttempt = {
   id: string;
+  arenaId?: string;
   publicHandle?: string;
   challengeSlug: string;
+  modelProfileId?: string;
   status: string;
   ranked: boolean;
   competitionTokens: number;
@@ -60,6 +65,15 @@ type WireAttempt = {
   assisted: boolean;
   startedAt: string;
   instance?: { seedCommitment?: string };
+};
+
+type WireModelProfile = Partial<ModelProfileV1> & {
+  route?: string;
+  status?: string;
+  routeProvider?: string;
+  providerDisplayName?: string;
+  model?: string;
+  available?: boolean;
 };
 
 type WireEvent = {
@@ -73,6 +87,60 @@ type WireEvent = {
 
 function isChallengeSlug(value: string): value is ChallengeSlug {
   return value === "signal-vault" || value === "clone-the-gremlin" || value === "rigged-race";
+}
+
+export function normalizeModelProfile(profile: WireModelProfile): ModelProfileV1 | undefined {
+  const id = typeof profile.id === "string" ? profile.id : undefined;
+  const displayName = typeof profile.displayName === "string" ? profile.displayName : undefined;
+  if (!id || !displayName || !/^[a-z0-9][a-z0-9._-]*$/.test(id)) return undefined;
+
+  const rawProvider = profile.provider ?? profile.routeProvider;
+  const provider = rawProvider === "openai" ? "openai" : "openrouter";
+  const rawAvailability = String(
+    profile.availability ??
+      profile.route ??
+      profile.status ??
+      (profile.available === false ? "needs-route" : "available"),
+  )
+    .toLowerCase()
+    .replaceAll("_", "-");
+
+  return {
+    schemaVersion: "model-profile.v1",
+    id,
+    designArenaId:
+      typeof profile.designArenaId === "string" && profile.designArenaId ? profile.designArenaId : id,
+    displayName,
+    creator:
+      typeof profile.creator === "string" && profile.creator
+        ? profile.creator
+        : typeof profile.providerDisplayName === "string" && profile.providerDisplayName
+          ? profile.providerDisplayName
+          : provider === "openai"
+            ? "OpenAI"
+            : "Other",
+    provider,
+    ...(typeof profile.providerModelId === "string" && profile.providerModelId
+      ? { providerModelId: profile.providerModelId }
+      : typeof profile.model === "string" && profile.model
+        ? { providerModelId: profile.model }
+        : {}),
+    ...(typeof profile.openRouterModelId === "string" && profile.openRouterModelId
+      ? { openRouterModelId: profile.openRouterModelId }
+      : {}),
+    ...(typeof profile.providerEndpoint === "string" && profile.providerEndpoint
+      ? { providerEndpoint: profile.providerEndpoint }
+      : {}),
+    availability: rawAvailability === "available" ? "available" : "needs-route",
+    ranked: profile.ranked === true,
+    reasoningMode: profile.reasoningMode === "thinking" ? "thinking" : "standard",
+    priceVersion:
+      typeof profile.priceVersion === "string" && profile.priceVersion ? profile.priceVersion : "unpriced",
+    sourceSyncedAt:
+      typeof profile.sourceSyncedAt === "string" && profile.sourceSyncedAt
+        ? profile.sourceSyncedAt
+        : "unknown",
+  };
 }
 
 export function normalizeChallenge(manifest: WireChallenge): Challenge | undefined {
@@ -116,7 +184,9 @@ function normalizeAttempt(state: WireAttempt): Attempt {
             : "ready";
   return {
     id: state.id,
+    ...(state.arenaId ? { arenaId: state.arenaId } : {}),
     challengeSlug: isChallengeSlug(state.challengeSlug) ? state.challengeSlug : "signal-vault",
+    ...(state.modelProfileId ? { modelProfileId: state.modelProfileId } : {}),
     status,
     mode: state.ranked ? "ranked" : "practice",
     competitionTokens: state.competitionTokens,
@@ -126,6 +196,28 @@ function normalizeAttempt(state: WireAttempt): Attempt {
     seedCommitment: state.instance?.seedCommitment,
     createdAt: state.startedAt,
   };
+}
+
+export async function listModels(): Promise<ModelCatalogV1> {
+  if (!API_URL) return demoModelCatalog;
+  try {
+    const payload = await request<
+      { models?: WireModelProfile[]; defaultModelId?: string } | WireModelProfile[]
+    >("/v1/models");
+    const profiles = (Array.isArray(payload) ? payload : (payload.models ?? []))
+      .map(normalizeModelProfile)
+      .filter((profile): profile is ModelProfileV1 => Boolean(profile));
+    const requestedDefault = Array.isArray(payload) ? undefined : payload.defaultModelId;
+    const defaultModelId =
+      profiles.find((profile) => profile.id === requestedDefault && profile.availability === "available")
+        ?.id ??
+      profiles.find((profile) => profile.availability === "available")?.id ??
+      profiles[0]?.id ??
+      "";
+    return { models: profiles, defaultModelId };
+  } catch {
+    return { models: [], defaultModelId: "" };
+  }
 }
 
 export function normalizeEvent(event: WireEvent): RunEvent {
@@ -241,11 +333,16 @@ export async function listChallenges(): Promise<Challenge[]> {
 export async function createAttempt(
   challengeSlug: ChallengeSlug,
   mode: "ranked" | "practice" = "ranked",
+  modelProfileId?: string,
 ): Promise<{ attempt: Attempt; events: RunEvent[] }> {
   if (API_URL) {
     const payload = await request<{ attempt: WireAttempt; events?: WireEvent[] }>("/v1/attempts", {
       method: "POST",
-      body: JSON.stringify({ challengeSlug, ranked: mode === "ranked" }),
+      body: JSON.stringify({
+        challengeSlug,
+        ranked: mode === "ranked",
+        ...(modelProfileId ? { modelProfileId } : {}),
+      }),
     });
     return {
       attempt: normalizeAttempt(payload.attempt),
@@ -256,6 +353,7 @@ export async function createAttempt(
     attempt: {
       id: `demo-${challengeSlug}-${Date.now()}`,
       challengeSlug,
+      modelProfileId: modelProfileId ?? demoModelCatalog.defaultModelId,
       status: "ready",
       mode,
       competitionTokens: 0,
