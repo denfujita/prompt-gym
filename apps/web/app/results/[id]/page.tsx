@@ -32,11 +32,11 @@ export default function ResultPage() {
     return (
       <div className="narrow-shell page-header">
         <span className="eyebrow">Result</span>
-        <h1>{failed ? "Result unavailable" : "Checking the verifier…"}</h1>
+        <h1>{failed ? "We couldn’t load this result" : "Checking your result…"}</h1>
         <p>
           {failed
-            ? "Sign in with the account that owns this run, then try again."
-            : "Loading exact usage and instance rank."}
+            ? "Sign in with the account that played this run, then try again."
+            : "We’re pulling in your token total and rank."}
         </p>
       </div>
     );
@@ -53,12 +53,12 @@ export default function ResultPage() {
   const delta =
     result.cheapestTokens === undefined ? undefined : scoreDelta(result.tokens, result.cheapestTokens);
   const comparison = !result.ranked
-    ? "Practice run · your result did not enter the leaderboard."
+    ? "Practice run. This score stays off the leaderboard."
     : delta === undefined
-      ? "Exact-instance comparison is not available yet."
+      ? "There isn’t a comparison for your task yet."
       : delta === 0
-        ? `Cheapest solve${result.rank === undefined ? "" : ` · rank #${result.rank}`}`
-        : `${formatTokens(delta)} above the cheapest solve${result.rank === undefined ? "" : ` · rank #${result.rank}`}`;
+        ? `You matched the cheapest win${result.rank === undefined ? "" : `, rank #${result.rank}`}`
+        : `${formatTokens(delta)} more tokens than the cheapest win${result.rank === undefined ? "" : `, rank #${result.rank}`}`;
   const usage = [
     ["Uncached input", Math.max(0, result.usage.input - result.usage.cachedInput)],
     ["Cached input", result.usage.cachedInput],
@@ -71,7 +71,7 @@ export default function ResultPage() {
       <div className="shell">
         <section className="result-hero">
           <span className="result-kicker">
-            {result.solved ? "✓ Exact solve" : "Run complete"} · {challenge.name}
+            {result.solved ? "✓ Verified win" : "Run finished"} · {challenge.name}
           </span>
           <h1>
             {result.solved ? "Solved" : "Finished"} in {formatTokens(result.tokens)} tokens.
@@ -84,14 +84,14 @@ export default function ResultPage() {
               <strong>{rewardTitle}</strong>
               <p>
                 {result.solved
-                  ? `Exact verifier passed in ${result.turns} coaching turn${result.turns === 1 ? "" : "s"}.`
-                  : "Return in practice mode to improve the run without changing this score."}
+                  ? `Passed in ${result.turns} coaching turn${result.turns === 1 ? "" : "s"}.`
+                  : "Try it again in practice. This score won’t change."}
               </p>
             </div>
           </div>
           <div className="result-stats">
             <div className="result-stat">
-              <small>Competition score</small>
+              <small>Tokens</small>
               <strong>{formatTokens(result.tokens)}</strong>
             </div>
             <div className="result-stat">
@@ -99,7 +99,7 @@ export default function ResultPage() {
               <strong>{result.turns} / 6</strong>
             </div>
             <div className="result-stat">
-              <small>Exact-instance rank</small>
+              <small>Rank on this board</small>
               <strong>
                 {!result.ranked
                   ? "Practice · unranked"
@@ -118,7 +118,7 @@ export default function ResultPage() {
         <div className="result-grid">
           <section className="surface result-card">
             <span className="eyebrow">Where your tokens went</span>
-            <h2>Usage breakdown</h2>
+            <h2>Token breakdown</h2>
             <div className="usage-list">
               {usage.map(([label, value]) => (
                 <div className="usage-row" key={label}>
@@ -134,14 +134,12 @@ export default function ResultPage() {
                 </div>
               ))}
             </div>
-            <p className="covered-cost">
-              Actual API cost: {formatCost(result.usage.actualCostUsd)} · covered by Prompt Gym
-            </p>
+            <p className="covered-cost">API cost: {formatCost(result.usage.actualCostUsd)} — on us</p>
           </section>
 
           <aside className="surface result-card">
-            <span className="eyebrow">Deterministic check</span>
-            <h2>Verifier</h2>
+            <span className="eyebrow">The final check</span>
+            <h2>{result.solved ? "It passed" : "Not quite"}</h2>
             <div className="verifier-box">
               <span aria-hidden="true">{result.solved ? "✓" : "!"}</span>
               <div>
@@ -155,11 +153,11 @@ export default function ResultPage() {
               </Link>
               {apiMode === "demo" ? (
                 <Link className="button button-wide" href="/replays/tiny-prompt-signal-vault">
-                  Watch demo cheapest solve
+                  Watch the cheapest demo win
                 </Link>
               ) : null}
               <Link className="button button-ghost button-wide" href="/leaderboard">
-                View full board
+                Open the leaderboard
               </Link>
             </div>
           </aside>

@@ -5,35 +5,35 @@ import { BenchmarkLabClient } from "@/components/benchmark-lab-client";
 
 export const metadata: Metadata = {
   title: "Benchmark Lab Preview",
-  description: "A scripted preview of Prompt Gym's proposed correctness-gated coding benchmark mode.",
+  description: "A scripted look at turning coding benchmarks into head-to-head coaching challenges.",
 };
 
 const benchmarkCards = [
   {
     state: "Preview open",
-    family: "KernelBench-style preview · GPU code",
+    family: "GPU code · KernelBench-style",
     title: "Kernel Sprint",
-    description: "Coach the AI to turn a PyTorch operator into a correct, faster Triton or CUDA kernel.",
+    description: "Turn a PyTorch operator into a correct, faster Triton or CUDA kernel.",
     win: "All hidden correctness cases pass",
-    score: "Bronze / Silver / Gold band, then fewer tokens",
+    score: "Best band, then fewer tokens",
     accent: "volt",
-    action: "Try the scripted preview",
+    action: "Try the preview",
     href: "#kernel-sprint-preview",
   },
   {
     state: "Next collection",
-    family: "Prompt Gym original · repository code",
+    family: "Repository code · Prompt Gym original",
     title: "Patch Sprint",
-    description: "Coach the AI through a compact software issue without touching the repository yourself.",
+    description: "Guide the AI through a small software issue without touching the repo yourself.",
     win: "Issue tests and regression tests all pass",
-    score: "Tasks solved, then fewer tokens",
+    score: "Issues solved, then fewer tokens",
     accent: "sky",
   },
   {
     state: "Research track",
-    family: "CodeClash-inspired research · bot code",
+    family: "Bot code · research track",
     title: "Bot Arena",
-    description: "Coach the AI to build a bot that climbs a frozen ladder of deterministic opponents.",
+    description: "Build a bot that climbs a fixed ladder of deterministic opponents.",
     win: "Beat the required opponent rung",
     score: "Highest rung, match margin, then fewer tokens",
     accent: "coral",
@@ -46,49 +46,49 @@ export default function BenchmarksPage() {
       <section className="benchmark-hero">
         <div className="shell benchmark-hero-grid">
           <div>
-            <span className="eyebrow">Scripted product preview</span>
-            <h1>How far can you push the model?</h1>
+            <span className="eyebrow">A scripted look at Benchmark Lab</span>
+            <h1>Can you beat the model’s first try?</h1>
             <p>
-              Daily Gym rewards the shortest exact solve. A live Benchmark Lab would reward the highest
-              verified performance band you can coach from the same pinned model under a fixed token budget.
+              Daily Gym rewards a clean solve with fewer tokens. Benchmark Lab asks how far you can improve
+              the same model before the budget runs out.
             </p>
             <div className="benchmark-hero-actions">
               <Link className="button button-dark" href="#kernel-sprint-preview">
-                Preview Kernel Sprint <span aria-hidden="true">↓</span>
+                Try Kernel Sprint <span aria-hidden="true">↓</span>
               </Link>
               <Link className="button button-ghost" href="/play">
-                Return to Daily Gym
+                Back to Daily Gym
               </Link>
             </div>
           </div>
           <aside className="benchmark-score-explainer">
-            <span className="eyebrow">Proposed fair-play rule</span>
+            <span className="eyebrow">How ranking would work</span>
             <ol>
               <li>
                 <b>1</b>
-                <span>Correctness unlocks a score.</span>
+                <span>First, make it correct.</span>
               </li>
               <li>
                 <b>2</b>
-                <span>Verified performance would earn Bronze, Silver, or Gold.</span>
+                <span>Then push it into Bronze, Silver, or Gold.</span>
               </li>
               <li>
                 <b>3</b>
-                <span>Inside a band, the coach who spent fewer tokens ranks higher.</span>
+                <span>Within a band, fewer tokens wins.</span>
               </li>
             </ol>
-            <p>Exact speed remains visible. Stable bands keep tiny GPU timing noise from deciding winners.</p>
+            <p>We still show raw speed, but bands stop tiny timing swings from picking the winner.</p>
           </aside>
         </div>
       </section>
 
       <div className="benchmark-season-strip">
         <div className="shell">
-          <strong>Proposed Kernel Season 01</strong>
+          <strong>Kernel Season 01 · preview</strong>
           <span>GPT-5.6 Terra · medium</span>
-          <span>Pinned GPU target</span>
+          <span>Same GPU for everyone</span>
           <span>15,000-token cap</span>
-          <span>3 evaluation cap</span>
+          <span>3 evaluations</span>
           <span className="pill">Open prompting</span>
         </div>
       </div>
@@ -97,12 +97,12 @@ export default function BenchmarksPage() {
         <div className="shell">
           <div className="section-heading">
             <div>
-              <span className="eyebrow">Benchmark collections</span>
-              <h2>Code is the model’s controller.</h2>
+              <span className="eyebrow">Pick a benchmark</span>
+              <h2>You coach. The AI writes the code.</h2>
             </div>
             <p>
-              In live ranked play, you would still only prompt. The AI would write, compile, test, and submit
-              while standardized runners grade the artifact.
+              You never touch the files. The AI writes, compiles, tests, and submits; the runner checks the
+              result.
             </p>
           </div>
           <div className="benchmark-card-grid">
@@ -119,11 +119,11 @@ export default function BenchmarksPage() {
                 <p>{card.description}</p>
                 <dl>
                   <div>
-                    <dt>Verified when</dt>
+                    <dt>You win when</dt>
                     <dd>{card.win}</dd>
                   </div>
                   <div>
-                    <dt>Ranked by</dt>
+                    <dt>Ranking</dt>
                     <dd>{card.score}</dd>
                   </div>
                 </dl>
@@ -132,7 +132,7 @@ export default function BenchmarksPage() {
                     {card.action} <span aria-hidden="true">→</span>
                   </Link>
                 ) : (
-                  <span className="benchmark-coming">Not enabled in the alpha</span>
+                  <span className="benchmark-coming">Coming after alpha</span>
                 )}
               </article>
             ))}
@@ -145,21 +145,20 @@ export default function BenchmarksPage() {
       <section className="section benchmark-methodology">
         <div className="shell benchmark-methodology-grid">
           <article>
-            <span className="eyebrow">What is real today</span>
-            <h2>A product preview, not a benchmark claim.</h2>
+            <span className="eyebrow">What’s live today</span>
+            <h2>This is a demo, not a benchmark result.</h2>
             <p>
-              The interactive Kernel Sprint above is a fixed walkthrough and spends no API or GPU credits.
-              Entered text is displayed but does not change its sample results. Ranked launch requires a
-              pinned, networkless GPU runner, hidden randomized correctness cases, repeated timing, and
-              independent reruns of leaderboard scores.
+              Kernel Sprint is a fixed walkthrough. It uses no API or GPU credits, and your text doesn’t
+              change the sample results. Ranked play will need an offline GPU runner, hidden randomized
+              correctness tests, repeated timing, and independent reruns.
             </p>
           </article>
           <article>
-            <span className="eyebrow">Research basis</span>
+            <span className="eyebrow">Where the idea comes from</span>
             <p>
-              KernelBench evaluates whether generated GPU kernels are both correct and faster than a PyTorch
-              reference. Prompt Gym would use a pinned compatible runner and disclose every environment
-              detail. Bronze, Silver, and Gold are Prompt Gym bands, not official KernelBench metrics.
+              KernelBench checks whether generated GPU kernels are correct and faster than a PyTorch
+              reference. Prompt Gym would run a fixed, fully disclosed setup. Our Bronze, Silver, and Gold
+              bands are not official KernelBench metrics.
             </p>
             <div className="benchmark-source-links">
               <a href="https://github.com/ScalingIntelligence/KernelBench">

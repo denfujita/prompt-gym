@@ -5,7 +5,7 @@ export function TokenMeter({ tokens, limit = 20_000 }: { tokens: number; limit?:
   return (
     <div className="token-meter" aria-label={`${formatTokens(tokens)} of ${formatTokens(limit)} token limit`}>
       <div className="token-meter-label">
-        <span>Tokens spent</span>
+        <span>Tokens so far</span>
         <strong aria-live="polite">{formatTokens(tokens)}</strong>
       </div>
       <div className="meter-track" aria-hidden="true">

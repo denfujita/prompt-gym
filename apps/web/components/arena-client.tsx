@@ -23,19 +23,19 @@ import { TokenMeter } from "./token-meter";
 
 const promptSuggestions: Record<Challenge["slug"], string[]> = {
   "signal-vault": [
-    "Probe one control at a time. Track symbol, gate, and tone changes separately.",
-    "Treat the tone pattern as an ordering rule. Test the mapping, not random paths.",
-    "Reuse the chamber mapping under rotation. Finish without another exploratory action.",
+    "Test one control at a time. Note what changes: the symbol, gate, or tone.",
+    "The tones may encode an order. Test that instead of trying random paths.",
+    "The last chamber looks rotated. Reuse the mapping and skip another probe.",
   ],
   "clone-the-gremlin": [
-    "Partition your oracle probes across input classes before writing the clone.",
-    "Focus the remaining probes on delimiter escaping, Unicode, and empty-run boundaries.",
-    "Use the observed equivalence classes to finish and submit; do not overfit examples.",
+    "Before writing code, spread your probes across different kinds of input.",
+    "Use the remaining probes on escaped delimiters, Unicode, and empty inputs.",
+    "You’ve found the main behavior groups. Finish the clone without chasing single examples.",
   ],
   "rigged-race": [
-    "Resolve aliases first, then correct sensor drift before trusting the leaderboard.",
-    "Cross-check the impossible acceleration against pit logs and estimate causal advantage.",
-    "Submit canonical IDs, corrected advantage, and only evidence that survives the correction.",
+    "Match the aliases first. Then correct the sensor drift before trusting the standings.",
+    "Check the suspicious acceleration against the pit logs, then estimate the advantage.",
+    "Submit the official IDs, corrected advantage, and only evidence that still holds up.",
   ],
 };
 
@@ -57,8 +57,8 @@ export function ArenaClient({
   const playMode = challenge.playMode === "build" ? "Build" : "Puzzle";
   const coachingCue =
     playMode === "Build"
-      ? "Tell the AI what behavior to probe, implement, or test next."
-      : "Tell the AI what to inspect, compare, or test next.";
+      ? "Point the AI toward the next thing worth probing, building, or testing."
+      : "Point the AI toward the next clue worth checking.";
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [events, setEvents] = useState<RunEvent[]>(() =>
     apiMode === "demo" ? initialArenaEvents[challenge.slug] : [],
@@ -72,8 +72,8 @@ export function ArenaClient({
   const [assisted, setAssisted] = useState(false);
   const [activeTab, setActiveTab] = useState<"task" | "model">("task");
   const [briefExpanded, setBriefExpanded] = useState(false);
-  const [connectionNote, setConnectionNote] = useState("Preparing run…");
-  const [modelLabel, setModelLabel] = useState("Pinned model");
+  const [connectionNote, setConnectionNote] = useState("Getting your run ready…");
+  const [modelLabel, setModelLabel] = useState("the selected model");
   const timelineRef = useRef<HTMLDivElement>(null);
   const timersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const authoritativeEventsRef = useRef<RunEvent[]>([]);
@@ -121,9 +121,7 @@ export function ArenaClient({
         if (bootstrapEvents.length) setEvents(bootstrapEvents);
         authoritativeEventsRef.current = bootstrapEvents;
         applyRunState(deriveArenaRunState(created, bootstrapEvents));
-        setConnectionNote(
-          created.id.startsWith("demo-") ? "Demo arena · no API spend" : "Live arena · connected",
-        );
+        setConnectionNote(created.id.startsWith("demo-") ? "Demo run, no API cost" : "Connected");
         unsubscribe = subscribeToAttempt(
           created.id,
           (event) => {
@@ -134,13 +132,13 @@ export function ArenaClient({
             );
             applyRunState(deriveArenaRunState(created, authoritativeEventsRef.current));
           },
-          () => setConnectionNote("Reconnecting to live events…"),
-          () => setConnectionNote("Live arena · connected"),
+          () => setConnectionNote("Reconnecting…"),
+          () => setConnectionNote("Connected"),
         );
       })
       .catch(() => {
         if (!active) return;
-        setConnectionNote("Sign in and confirm 18+ US eligibility to start live play");
+        setConnectionNote("Sign in and confirm you’re 18+ and in the US to play live");
         setEvents((current) => [
           ...current,
           {
@@ -149,7 +147,7 @@ export function ArenaClient({
             actor: "system",
             type: "model.status",
             title: "Live run not started",
-            body: "Visit Sign in, complete the one-time eligibility check, then return to the arena.",
+            body: "Sign in, complete the one-time eligibility check, then come back here.",
             createdAt: new Date().toISOString(),
           },
         ]);
@@ -228,7 +226,7 @@ export function ArenaClient({
         type: "model.status",
         actor: "system",
         title: "Turn did not start",
-        body: "Your prompt was preserved. Try sending it again.",
+        body: "Your prompt is still here. Try sending it again.",
         createdAt: new Date().toISOString(),
       });
       setPrompt(cleaned);
@@ -249,7 +247,7 @@ export function ArenaClient({
       type: "attempt.interrupted",
       actor: "system",
       title: "Turn stopped",
-      body: "Any usage reported before cancellation still counts toward your score.",
+      body: "Any tokens reported before the stop still count toward your score.",
       createdAt: new Date().toISOString(),
     });
   }
@@ -261,7 +259,7 @@ export function ArenaClient({
       setAssisted(true);
       setPrompt(serverHint ?? suggestion);
     } catch {
-      setConnectionNote("Hints unlock after two completed turns");
+      setConnectionNote("Hints open after two turns");
     }
   }
 
@@ -274,10 +272,10 @@ export function ArenaClient({
               {challenge.symbol}
             </span>
             <div>
-              <span className="arena-mode-kicker">{playMode} · you coach</span>
+              <span className="arena-mode-kicker">{playMode} · You coach</span>
               <h1>{challenge.name}</h1>
               <p>
-                {connectionNote} <span aria-hidden="true">·</span> {modelLabel} locked
+                {connectionNote} <span aria-hidden="true">·</span> Coaching {modelLabel}
               </p>
             </div>
           </div>
@@ -304,7 +302,7 @@ export function ArenaClient({
           role="tab"
           aria-selected={activeTab === "model"}
         >
-          AI activity <span aria-hidden="true">· {events.length}</span>
+          AI’s work <span aria-hidden="true">· {events.length}</span>
         </button>
       </div>
 
@@ -314,18 +312,18 @@ export function ArenaClient({
             ✓
           </span>
           <div>
-            <small>{playMode === "Build" ? "Verified build" : "Case cracked"} · exact verifier passed</small>
+            <small>{playMode === "Build" ? "Verified build" : "Case cracked"}. Passed every check.</small>
             <strong>
               {playMode === "Build" ? "Your build passed" : "You solved it"} in {formatTokens(tokens)} tokens.
             </strong>
             <p>
               {attempt?.mode === "ranked"
-                ? "Your score is locked. See where the tokens went and how you rank on this exact instance."
-                : "Your practice result is ready. See where the tokens went; the leaderboard is unchanged."}
+                ? "Your score is locked. See where the tokens went and how you rank on this task."
+                : "Your practice result is ready. Review the token breakdown; the leaderboard won’t change."}
             </p>
           </div>
           <Link className="button button-dark" href={`/results/${attempt?.id ?? `demo-${challenge.slug}`}`}>
-            See score & rank →
+            View results →
           </Link>
         </div>
       ) : null}
@@ -336,8 +334,8 @@ export function ArenaClient({
           aria-label="Task view"
         >
           <div className="panel-head">
-            <h2>{playMode} workspace</h2>
-            <small>AI-controlled · watch only</small>
+            <h2>{playMode}</h2>
+            <small>The AI acts. You watch and coach.</small>
           </div>
           <div className="task-panel-body">
             <div className="challenge-brief">
@@ -347,12 +345,12 @@ export function ArenaClient({
                 <p>
                   {coachingCue}{" "}
                   {briefExpanded
-                    ? `You have ${challenge.timeLimitMinutes} minutes, ${challenge.actionBudgetLabel}, and six coaching prompts. The AI already has the complete task brief.`
+                    ? `You have ${challenge.timeLimitMinutes} minutes, ${challenge.actionBudgetLabel}, and six prompts. The AI already knows the full brief.`
                     : ""}
                 </p>
               </div>
               <button type="button" onClick={() => setBriefExpanded((value) => !value)}>
-                {briefExpanded ? "Show less" : "How this run works"}
+                {briefExpanded ? "Show less" : "How it works"}
               </button>
             </div>
             <TaskView
@@ -369,8 +367,8 @@ export function ArenaClient({
           aria-label="Model activity"
         >
           <div className="panel-head">
-            <h2>AI activity</h2>
-            <small>Messages · actions · token cost</small>
+            <h2>What the AI is doing</h2>
+            <small>Messages, actions, and tokens</small>
           </div>
           <div className="timeline" ref={timelineRef} aria-live="polite">
             {displayedEvents.map((event) => (
@@ -384,7 +382,7 @@ export function ArenaClient({
                 <p>{event.body}</p>
                 {event.detail ? (
                   <details>
-                    <summary>Technical detail</summary>
+                    <summary>Show technical details</summary>
                     <pre>{event.detail}</pre>
                   </details>
                 ) : null}
@@ -397,7 +395,7 @@ export function ArenaClient({
                   <span />
                   <span />
                 </span>
-                Thinking… private reasoning is never shown
+                Thinking… We don’t show private reasoning.
               </div>
             ) : null}
           </div>
@@ -410,11 +408,11 @@ export function ArenaClient({
             <div className="prompt-guidance">
               <strong>
                 {solved
-                  ? "Verified solve"
+                  ? "Solved"
                   : running
                     ? "The AI is working"
                     : turn === 0
-                      ? "Give the AI its first direction"
+                      ? "Give the AI a first direction"
                       : "Review what changed, then coach the next move"}
               </strong>
               <span>{solved ? "Your score is ready." : coachingCue}</span>
@@ -430,7 +428,7 @@ export function ArenaClient({
                   if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
                     event.currentTarget.form?.requestSubmit();
                 }}
-                placeholder={solved ? "Exact solve verified." : promptPlaceholders[challenge.slug]}
+                placeholder={solved ? "Solved." : promptPlaceholders[challenge.slug]}
                 rows={2}
                 value={prompt}
               />
@@ -467,10 +465,10 @@ export function ArenaClient({
           </div>
         </form>
         <div className="prompt-footnote">
-          <span>You write directions. The AI alone controls the {playMode.toLowerCase()}.</span>
+          <span>You give directions. Only the AI can touch the task.</span>
           <span>
             {!attempt
-              ? "Preparing run…"
+              ? "Getting ready…"
               : attempt.mode === "practice"
                 ? "Practice · unranked"
                 : assisted

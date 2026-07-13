@@ -11,20 +11,20 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://prompt.gym"),
   title: {
-    default: "Prompt Gym — Coach smarter. Spend fewer tokens.",
+    default: "Prompt Gym — Guide the AI to a win with fewer tokens",
     template: "%s · Prompt Gym",
   },
   description:
-    "An AI coaching arcade where exact puzzles reward fewer tokens, with a scripted preview of future coding benchmark competitions.",
+    "A daily game where you coach an AI through puzzles and builds, then compete to solve them with fewer tokens.",
   openGraph: {
     title: "Prompt Gym",
-    description: "Coach an AI. Spend fewer tokens. Climb the board.",
+    description: "Can you guide an AI to a win with fewer tokens?",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Prompt Gym",
-    description: "Coach an AI. Spend fewer tokens. Climb the board.",
+    description: "Can you guide an AI to a win with fewer tokens?",
   },
 };
 

@@ -8,17 +8,17 @@ import { Mascot } from "./mascot";
 
 const cardCopy: Record<Challenge["slug"], { role: string; format: string; cta: string }> = {
   "signal-vault": {
-    role: "Tell it what to test next and help it connect the clues.",
+    role: "Choose the next test, then help it connect the clues.",
     format: "Visual actions",
     cta: "Crack the vault",
   },
   "rigged-race": {
-    role: "Tell it which file, alias, or timestamp to investigate next.",
+    role: "Point it toward the next file, alias, or timestamp worth checking.",
     format: "Evidence answer",
     cta: "Solve the case",
   },
   "clone-the-gremlin": {
-    role: "Choose revealing test inputs, then tell the AI what to fix.",
+    role: "Pick revealing inputs, then guide the AI toward the right fix.",
     format: "Working code",
     cta: "Build the clone",
   },
@@ -48,7 +48,7 @@ export function ChallengeCard({
       <div className="challenge-card-top">
         <div>
           <span className="eyebrow">
-            {mode} {order} · {challenge.category}
+            {mode} {order} — {challenge.category}
           </span>
           <h3>{challenge.name}</h3>
         </div>
@@ -57,21 +57,21 @@ export function ChallengeCard({
       <p>{challenge.brief}</p>
       <div className="challenge-explainer">
         <div>
-          <small>Your role</small>
+          <small>What you do</small>
           <p>{copy.role}</p>
         </div>
         <div>
-          <small>Verified win</small>
+          <small>You win when</small>
           <p>{challenge.objective}</p>
         </div>
       </div>
       <dl className="challenge-stats">
         <div>
-          <dt>Outcome</dt>
+          <dt>Result</dt>
           <dd>{copy.format}</dd>
         </div>
         <div>
-          <dt>Time box</dt>
+          <dt>Time</dt>
           <dd>{challenge.timeLimitMinutes} min</dd>
         </div>
         <div>
@@ -80,15 +80,15 @@ export function ChallengeCard({
         </div>
       </dl>
       <div className="challenge-benchmark">
-        <span>Cheapest verified solve</span>
+        <span>Score to beat</span>
         <strong>
           {challenge.cheapestTokens === null
-            ? "Revealed after entry"
+            ? "Shown when you enter"
             : formatTokens(challenge.cheapestTokens)}
         </strong>
         <small>
           {challenge.playersToday === null
-            ? "Compared on your exact seed"
+            ? "Compared on your exact task"
             : `${compactNumber(challenge.playersToday)} players today`}
         </small>
       </div>

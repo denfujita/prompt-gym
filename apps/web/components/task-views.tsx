@@ -26,8 +26,8 @@ export function TaskView({
 function WaitingForTaskState() {
   return (
     <div className="live-state-wait" role="status">
-      <strong>Waiting for task state…</strong>
-      <p>The task view will update from the run’s signed event stream.</p>
+      <strong>Getting the task ready…</strong>
+      <p>It’ll appear here as soon as the run begins.</p>
     </div>
   );
 }
@@ -101,7 +101,7 @@ function LiveSignalVaultView({ state }: { state: PublicTaskState }) {
             <b>Gate {String(gate.symbol ?? "")}</b> · {String(gate.position ?? "unknown")}
           </span>
         ) : null}
-        <span>Updated from task.state event</span>
+        <span>Live task update</span>
       </div>
     </div>
   );
@@ -109,8 +109,7 @@ function LiveSignalVaultView({ state }: { state: PublicTaskState }) {
 
 function LiveGremlinView({ state }: { state: PublicTaskState }) {
   const probesRemaining = taskStateNumber(state, "probesRemaining");
-  const artifact =
-    taskStateString(state, "artifact") ?? taskStateString(state, "file") ?? "replacement artifact";
+  const artifact = taskStateString(state, "artifact") ?? taskStateString(state, "file") ?? "replacement file";
   const privateTests = taskStateNumber(state, "privateTests");
   const status = taskStateString(state, "status") ?? "ACTIVE";
   const publicTests = taskStateString(state, "publicTests");
@@ -118,7 +117,7 @@ function LiveGremlinView({ state }: { state: PublicTaskState }) {
     <div className="gremlin-workbench" aria-label={`Gremlin workbench; state ${status}`}>
       <section className="oracle-pane">
         <div className="terminal-head">
-          <span>Execution-only oracle</span>
+          <span>You can run it, but not inspect it</span>
           <span>{status}</span>
         </div>
         <p className="terminal-line">
@@ -126,30 +125,28 @@ function LiveGremlinView({ state }: { state: PublicTaskState }) {
         </p>
         <p className="terminal-line">
           <span className="result">→</span>{" "}
-          {probesRemaining === undefined ? "Awaiting counter" : `${probesRemaining} of 18 remaining`}
+          {probesRemaining === undefined ? "Not reported yet" : `${probesRemaining} of 18 remaining`}
         </p>
-        <p className="terminal-line">
-          Oracle inputs and visible outputs appear in the model activity stream.
-        </p>
+        <p className="terminal-line">Each oracle query and result appears in the AI activity feed.</p>
       </section>
       <section className="code-pane">
         <div className="terminal-head">
           <span>{artifact}</span>
-          <span>Model-controlled</span>
+          <span>AI-controlled</span>
         </div>
         <ol className="code-lines">
           <li>
-            <span className="code-key">artifact</span>: {artifact}
+            <span className="code-key">file</span>: {artifact}
           </li>
           <li>
             <span className="code-key">public tests</span>: {publicTests ?? "not reported"}
           </li>
           <li>
-            <span className="code-key">verifier</span>: exact behavioral equivalence
+            <span className="code-key">goal</span>: match every behavior
           </li>
         </ol>
         <div className="test-bar">
-          <span>PRIVATE CHECKS</span>
+          <span>HIDDEN TESTS</span>
           <strong>{privateTests === undefined ? "Hidden" : `${privateTests} hidden cases`}</strong>
         </div>
       </section>
@@ -170,7 +167,7 @@ function LiveRaceView({ state }: { state: PublicTaskState }) {
       aria-label={`Rigged Race evidence board; ${filesRead} evidence files read; state ${status}`}
     >
       <div className="race-board-head">
-        <strong>Generated evidence case</strong>
+        <strong>Evidence case</strong>
         <span className="pill">{status}</span>
       </div>
       <div className="live-race-grid">
@@ -179,11 +176,11 @@ function LiveRaceView({ state }: { state: PublicTaskState }) {
           <strong>
             {filesRead} / {files.length || "—"} files read
           </strong>
-          <p>File contents and analysis steps appear only after the model reads them.</p>
+          <p>Files and analysis appear here as the AI reads them.</p>
         </section>
         <section className="live-state-summary">
-          <small>Exact submission</small>
-          <strong>{fields.length ? fields.join(" · ") : "Awaiting schema"}</strong>
+          <small>Answer format</small>
+          <strong>{fields.length ? fields.join(" · ") : "Not loaded yet"}</strong>
           {unit ? (
             <p>
               Advantage in {unit}
@@ -209,7 +206,7 @@ function SignalVaultView({ progress }: { progress: number }) {
       aria-label={`${Math.min(progress, 3)} of 3 Signal Vault chambers cleared`}
     >
       <div className="vault-status">
-        <span>Control link · Stable</span>
+        <span>Connection stable</span>
         <span>{Math.min(progress, 3)}/3 chambers clear</span>
       </div>
       <div className="vault-chambers">

@@ -26,7 +26,7 @@ const demoRounds: DemoRound[] = [
     speedup: 1.4,
     runtimeUs: 131,
     rank: 84,
-    change: "Replaced eager reductions with one fused Triton program and coalesced row loads.",
+    change: "Fused the eager reductions into one Triton program and coalesced the row loads.",
     code: `@triton.jit
 def layer_norm_gelu(x, out, n_cols: tl.constexpr):
     row = tl.program_id(0)
@@ -44,7 +44,7 @@ def layer_norm_gelu(x, out, n_cols: tl.constexpr):
     speedup: 2.08,
     runtimeUs: 88.5,
     rank: 16,
-    change: "Moved reduction into warp-local partials and removed a second global-memory pass.",
+    change: "Moved the reduction into warp-local partials and cut the second memory pass.",
     code: `@triton.jit
 def layer_norm_gelu(x, out, n_cols: tl.constexpr):
     row = tl.program_id(0)
@@ -65,7 +65,7 @@ def layer_norm_gelu(x, out, n_cols: tl.constexpr):
     runtimeUs: 81.4,
     rank: 37,
     change:
-      "Tried a larger block and approximate GELU. It ran faster but spent more tokens inside the same Gold band.",
+      "Tried a larger block with approximate GELU. It was faster, but cost more tokens without leaving Gold.",
     code: `@triton.jit
 def layer_norm_gelu(x, out, n_cols: tl.constexpr):
     row = tl.program_id(0)
@@ -81,9 +81,9 @@ def layer_norm_gelu(x, out, n_cols: tl.constexpr):
 ];
 
 const coachingSuggestions = [
-  "Fuse LayerNorm and GELU into one Triton kernel. Start with a correct row-wise reduction and prepare the first sample evaluation.",
-  "The kernel is correct but only Silver. Remove the extra memory pass and use warp-local reduction before rerunning.",
-  "Gold is already secured at 2,170 tokens. Only continue if the performance gain is worth spending more tokens in the same band.",
+  "Fuse LayerNorm and GELU in one Triton kernel. Start with a correct row-wise reduction, then run the first sample.",
+  "The kernel is correct but still Silver. Remove the extra memory pass and try a warp-local reduction.",
+  "Gold is locked at 2,170 tokens. Continue only if the speed gain is worth more tokens in the same band.",
 ];
 
 const tierLabel: Record<BenchmarkTier, string> = {
@@ -169,8 +169,11 @@ export function BenchmarkLabClient() {
     <section className="benchmark-demo-section" id="kernel-sprint-preview">
       <div className="shell">
         <div className="benchmark-preview-note">
-          <span className="pill">Scripted product preview</span>
-          <p>No API or GPU is used. Your text is displayed only; each turn advances a fixed walkthrough.</p>
+          <span className="pill">Scripted preview</span>
+          <p>
+            No model, API, or GPU is used. Your prompt appears on screen, but every turn follows the same
+            script.
+          </p>
         </div>
 
         <div className="benchmark-arena">
@@ -178,9 +181,7 @@ export function BenchmarkLabClient() {
             <div>
               <span className="eyebrow">Benchmark Lab · Kernel Sprint 01</span>
               <h2>Fused LayerNorm + GELU</h2>
-              <p>
-                Preview how you would coach Terra to replace a PyTorch operator with a correct, faster kernel.
-              </p>
+              <p>See how you might guide Terra from a PyTorch operator to a correct, faster kernel.</p>
             </div>
             <div className="benchmark-score-strip" aria-label="Current benchmark score">
               <div>
@@ -196,7 +197,7 @@ export function BenchmarkLabClient() {
                 <strong>{formatTokens(tokens)} / 15k</strong>
               </div>
               <div>
-                <small>Sample evaluations</small>
+                <small>Sample runs</small>
                 <strong>{completedRounds} / 3</strong>
               </div>
             </div>
@@ -204,13 +205,13 @@ export function BenchmarkLabClient() {
 
           <div className="benchmark-rulebar">
             <span>
-              <b>Correctness gate</b> · all 5 sample hidden shapes
+              <b>Must pass</b> · all 5 sample shapes
             </span>
             <span>
-              <b>Performance bands</b> · Bronze correct · Silver ≥1× · Gold ≥2×
+              <b>Bands</b> · Bronze: correct · Silver: ≥1× · Gold: ≥2×
             </span>
             <span>
-              <b>Ranking</b> · band first, then fewer tokens
+              <b>Rank</b> · band first, then fewer tokens
             </span>
           </div>
 
@@ -233,7 +234,7 @@ export function BenchmarkLabClient() {
                 onClick={() => setPrompt(suggestion)}
                 type="button"
               >
-                Use a sample coaching direction
+                Try a sample prompt
               </button>
             </div>
             <div className="benchmark-prompt-actions">
@@ -244,10 +245,10 @@ export function BenchmarkLabClient() {
                 type="submit"
               >
                 {running
-                  ? "Advancing walkthrough…"
+                  ? "Running the next step…"
                   : completedRounds >= demoRounds.length
                     ? "Preview complete"
-                    : "Advance walkthrough"}
+                    : "Run sample turn"}
               </button>
               {completedRounds > 0 ? (
                 <button className="button button-ghost" onClick={resetPreview} ref={resetRef} type="button">
@@ -260,7 +261,7 @@ export function BenchmarkLabClient() {
           <div className="benchmark-arena-grid">
             <section className="benchmark-code-panel">
               <div className="panel-head">
-                <h3>AI-controlled code</h3>
+                <h3>The AI’s code</h3>
                 <small>Read only</small>
               </div>
               <div className="benchmark-task-brief">
@@ -271,21 +272,19 @@ export function BenchmarkLabClient() {
               <pre aria-label="Current AI-controlled candidate code" className="benchmark-code" tabIndex={0}>
                 <code>
                   {latest?.code ??
-                    `# candidate.py\n# The AI can replace this file with Triton or CUDA.\n\ndef custom_kernel(x):\n    return torch.nn.functional.gelu(\n        torch.nn.functional.layer_norm(x, (1024,))\n    )`}
+                    `# candidate.py\n# The AI can replace this with Triton or CUDA.\n\ndef custom_kernel(x):\n    return torch.nn.functional.gelu(\n        torch.nn.functional.layer_norm(x, (1024,))\n    )`}
                 </code>
               </pre>
               <div className="benchmark-change-note">
-                <small>Latest artifact</small>
-                <p>
-                  {latest?.change ?? "No candidate yet. Coach the AI to produce the first implementation."}
-                </p>
+                <small>Latest version</small>
+                <p>{latest?.change ?? "No candidate yet. Ask the AI to build one."}</p>
               </div>
             </section>
 
             <section className="benchmark-check-panel">
               <div className="panel-head">
-                <h3>Simulated checks</h3>
-                <small>Fixed walkthrough data</small>
+                <h3>Sample checks</h3>
+                <small>Scripted results</small>
               </div>
               <div className="benchmark-check-ladder" aria-live="polite">
                 <CheckRow
@@ -323,7 +322,7 @@ export function BenchmarkLabClient() {
               </div>
 
               <div className="benchmark-activity">
-                <span className="eyebrow">AI activity</span>
+                <span className="eyebrow">What the AI is doing</span>
                 {lastPrompt ? (
                   <article>
                     <small>Your prompt · Turn {Math.min(completedRounds + (running ? 1 : 0), 3)}</small>
@@ -333,27 +332,24 @@ export function BenchmarkLabClient() {
                   <article>
                     <small>Workbench ready</small>
                     <p>
-                      The live product will let the AI inspect the reference, edit candidate.py, run
-                      development tests, and request an evaluation.
+                      In live play, the AI can inspect the reference, edit candidate.py, run tests, and ask
+                      for an evaluation.
                     </p>
                   </article>
                 )}
                 {phase === "thinking" ? (
-                  <ActivityRow label="Thinking…" detail="Planning the next optimization." />
+                  <ActivityRow label="Thinking…" detail="Choosing the next optimization." />
                 ) : null}
                 {phase === "editing" ? (
-                  <ActivityRow label="Artifact changed" detail="candidate.py updated." />
+                  <ActivityRow label="Code changed" detail="candidate.py updated." />
                 ) : null}
                 {phase === "checking" ? (
-                  <ActivityRow
-                    label="Simulated correctness"
-                    detail="Checking 5 sample shapes in the walkthrough."
-                  />
+                  <ActivityRow label="Simulated correctness" detail="Checking five sample shapes." />
                 ) : null}
                 {phase === "timing" ? (
                   <ActivityRow
                     label="Simulated timing"
-                    detail="Showing an illustrative reference/candidate comparison."
+                    detail="Comparing the sample candidate with the reference."
                   />
                 ) : null}
                 {!running && latest ? (
@@ -368,8 +364,8 @@ export function BenchmarkLabClient() {
                       {tierLabel[benchmarkTier(true, latest.speedup)]} · {latest.speedup.toFixed(2)}× faster
                     </strong>
                     <p>
-                      +{formatTokens(latest.tokenDelta)} tokens · sample rank #{latest.rank}. The best
-                      eligible artifact is kept even if a later run scores worse.
+                      +{formatTokens(latest.tokenDelta)} tokens · sample rank #{latest.rank}. The best valid
+                      result stays, even if a later run is worse.
                     </p>
                   </article>
                 ) : null}
@@ -381,10 +377,10 @@ export function BenchmarkLabClient() {
             <footer className="benchmark-best-footer">
               <span aria-hidden="true">★</span>
               <div>
-                <small>Best sample candidate</small>
+                <small>Best sample result</small>
                 <strong>
-                  {tierLabel[benchmarkTier(true, best.speedup)]} · {best.speedup.toFixed(2)}× ·{" "}
-                  {formatTokens(best.cumulativeTokens)} tokens to reach it
+                  {tierLabel[benchmarkTier(true, best.speedup)]} · {best.speedup.toFixed(2)}× · reached in{" "}
+                  {formatTokens(best.cumulativeTokens)} tokens
                 </strong>
               </div>
               <span>Sample rank #{best.rank}</span>

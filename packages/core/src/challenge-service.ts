@@ -126,10 +126,10 @@ export const DEMO_CHALLENGES: ChallengeManifest[] = [
     slug: "signal-vault",
     version: "1.0.0",
     title: "Crack the Signal Vault",
-    shortDescription: "Discover the rules and open all three chambers.",
+    shortDescription: "Learn the hidden rules and open all three chambers.",
     playerBrief:
-      "Three chambers. Six controls. No manual. Coach your AI to discover each rule and open the vault before its actions run out.",
-    winCondition: "Open all 3 chambers in 24 actions.",
+      "Three chambers, six controls, and no instructions. Help the AI learn the rules before it runs out of moves.",
+    winCondition: "Open all 3 chambers within 24 actions.",
     brief:
       "Open all three chambers. Use observe and vault_action to infer each chamber's symbol rule. You have a shared action budget; submit only through the provided tools.",
     kind: "visual",
@@ -148,9 +148,9 @@ export const DEMO_CHALLENGES: ChallengeManifest[] = [
     slug: "clone-the-gremlin",
     version: "1.0.0",
     title: "Copy the Gremlin",
-    shortDescription: "Study a mystery tool and build its exact twin.",
+    shortDescription: "Study a mystery tool and build its perfect twin.",
     playerBrief:
-      "A mischievous text machine has no manual. Coach your AI to test it, learn its tricks, and build an exact replacement.",
+      "A mischievous text machine has no manual. Help the AI test its quirks and build a perfect copy.",
     winCondition: "Pass all 42 hidden cases using at most 18 probes.",
     brief:
       "Recreate the oracle's behavior. You may probe it at most 18 times, edit only /workspace/solution.ts, run public smoke tests, and submit against hidden behavioral tests.",
@@ -170,10 +170,10 @@ export const DEMO_CHALLENGES: ChallengeManifest[] = [
     slug: "rigged-race",
     version: "1.0.0",
     title: "Who Rigged the Race?",
-    shortDescription: "Uncover the true winner and the hidden cheat.",
+    shortDescription: "Find the real winner and expose the cheat.",
     playerBrief:
-      "The declared winner may not have won—and someone tampered with a sensor. Coach your AI through the evidence to uncover what really happened.",
-    winCondition: "Name the true winner, cheater, stolen advantage, and 2 proof IDs.",
+      "The winner may not have won, and one sensor looks suspicious. Follow the evidence with the AI and find out what happened.",
+    winCondition: "Name the real winner, the cheater, their advantage, and 2 proof IDs.",
     brief:
       "Analyze the synthetic race evidence. Submit exact JSON with winner, cheater, advantage, and evidenceIds. Sensor drift, aliases, and confounding are intentional.",
     kind: "data",
@@ -440,7 +440,9 @@ export class LocalDemoChallengeService implements ChallengeServiceClient {
         visibleOutput: { accepted: passed, fieldsChecked: 4 },
         verification: this.verification(
           passed,
-          passed ? "Finding matches generator ground truth" : "One or more fields do not match the evidence",
+          passed
+            ? "The finding matches the ground truth, including the allowed time tolerance"
+            : "One or more fields do not match the evidence",
         ),
       };
     }

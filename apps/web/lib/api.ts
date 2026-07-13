@@ -228,7 +228,7 @@ export function normalizeEvent(event: WireEvent): RunEvent {
     .join(" ");
   const title =
     payload.passed === true
-      ? "Verifier pass"
+      ? "Verifier passed"
       : typeof payload.title === "string"
         ? payload.title
         : defaultTitle;
@@ -245,7 +245,7 @@ export function normalizeEvent(event: WireEvent): RunEvent {
     typeof bodyValue === "string"
       ? bodyValue
       : bodyValue === undefined
-        ? "Activity recorded."
+        ? "Update received."
         : JSON.stringify(bodyValue);
   const totalTokens =
     typeof payload.totalTokens === "number"
@@ -553,7 +553,7 @@ export async function getResult(id: string): Promise<AttemptResult> {
       turns: attempt.turnsUsed,
       assisted: attempt.assisted,
       usage,
-      verifierMessage: payload.verification?.publicFeedback ?? "Exact verifier passed.",
+      verifierMessage: payload.verification?.publicFeedback ?? "The verifier passed.",
     };
   }
   const slug = id.includes("clone-the-gremlin")

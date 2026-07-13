@@ -8,6 +8,14 @@ import type { Challenge, Replay } from "@/lib/types";
 
 import { TaskView } from "./task-views";
 
+const actorLabels: Record<Replay["events"][number]["actor"], string> = {
+  player: "Coach",
+  model: "AI",
+  tool: "Tool",
+  verifier: "Verifier",
+  system: "Prompt Gym",
+};
+
 export function ReplayPlayer({ challenge, replay }: { challenge: Challenge; replay: Replay }) {
   const [cursor, setCursor] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -39,7 +47,7 @@ export function ReplayPlayer({ challenge, replay }: { challenge: Challenge; repl
       <section className="surface replay-stage">
         <div className="panel-head">
           <h2>{challenge.name}</h2>
-          <small>Read-only replay</small>
+          <small>Watch only</small>
         </div>
         <div className="replay-stage-body">
           <TaskView
@@ -68,8 +76,8 @@ export function ReplayPlayer({ challenge, replay }: { challenge: Challenge; repl
 
       <aside className="surface replay-events">
         <div className="panel-head">
-          <h2>Run trace</h2>
-          <small>Public after season close</small>
+          <h2>What happened</h2>
+          <small>Shared after the season</small>
         </div>
         <div className="replay-events-list">
           {replay.events.map((event, index) => (
@@ -78,7 +86,8 @@ export function ReplayPlayer({ challenge, replay }: { challenge: Challenge; repl
               key={event.id}
             >
               <small>
-                {event.actor} · {event.tokenDelta ? `+${event.tokenDelta} tokens` : "no model call"}
+                {actorLabels[event.actor]} ·{" "}
+                {event.tokenDelta ? `+${event.tokenDelta} tokens` : "no model call"}
               </small>
               <strong>{event.title}</strong>
             </article>

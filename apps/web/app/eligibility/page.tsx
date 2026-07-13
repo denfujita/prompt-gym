@@ -7,11 +7,11 @@ export default function EligibilityPage() {
   return (
     <div className="sign-in-page">
       <section className="sign-in-card eligibility-card">
-        <span className="eyebrow">One-time alpha check</span>
+        <span className="eyebrow">A quick alpha check</span>
         <h1>Ready to enter?</h1>
         <p>
-          Live play is currently limited to adults in the United States. These statements are used only for
-          eligibility and abuse prevention.
+          For now, live play is limited to adults in the United States. We use these answers only to confirm
+          eligibility and prevent abuse.
         </p>
         <EligibilityForm />
       </section>

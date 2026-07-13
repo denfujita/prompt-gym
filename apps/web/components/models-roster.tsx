@@ -46,31 +46,31 @@ export function ModelsRoster() {
     <section className="model-roster" aria-label="Season model roster">
       <div className="model-roster-summary">
         <div>
-          <small>Season roster</small>
+          <small>This season</small>
           <strong>{loaded ? catalog.models.length : "—"}</strong>
-          <span>text + code models tracked</span>
+          <span>text and code models</span>
         </div>
         <div>
           <small>Playable now</small>
           <strong>{loaded ? readyCount : "—"}</strong>
-          <span>production routes ready</span>
+          <span>ready to play</span>
         </div>
         <div>
-          <small>Fair comparison</small>
-          <strong>1:1</strong>
-          <span>one board per exact setup</span>
+          <small>Separate boards</small>
+          <strong>One each</strong>
+          <span>one for each setup</span>
         </div>
       </div>
 
       {!loaded ? (
         <article className="surface model-roster-empty">
-          <h2>Loading the live model roster…</h2>
+          <h2>Loading the models…</h2>
         </article>
       ) : null}
       {loaded && groups.length === 0 ? (
         <article className="surface model-roster-empty">
-          <h2>The model roster is between rounds.</h2>
-          <p>Refresh when the live API is available.</p>
+          <h2>No models are ready right now.</h2>
+          <p>Refresh and try again.</p>
         </article>
       ) : null}
 
@@ -81,10 +81,12 @@ export function ModelsRoster() {
               {String(groupIndex + 1).padStart(2, "0")}
             </div>
             <div>
-              <span className="eyebrow">Model provider</span>
+              <span className="eyebrow">Made by</span>
               <h2>{creator}</h2>
             </div>
-            <small>{models.length} in this season</small>
+            <small>
+              {models.length} model{models.length === 1 ? "" : "s"}
+            </small>
           </header>
           <div className="model-roster-grid">
             {models.map((model) => {
@@ -96,7 +98,7 @@ export function ModelsRoster() {
                 >
                   <div className="model-roster-card-top">
                     <span className={`route-state ${available ? "is-ready" : "is-needed"}`}>
-                      {available ? "Available" : "Needs route"}
+                      {available ? "Ready" : "Needs a route"}
                     </span>
                     <span className="model-route-chip">{routeLabel(model)}</span>
                   </div>
@@ -104,9 +106,9 @@ export function ModelsRoster() {
                   <p>
                     {available
                       ? model.ranked
-                        ? "Ranked Puzzle, Build, and Benchmark arenas can pin this setup."
-                        : "Playable in practice while its first ranked arena is calibrated."
-                      : "Tracked from Design Arena, but no approved production endpoint is available yet."}
+                        ? "Ready for ranked Puzzle and Build play."
+                        : "Practice is open while we prepare ranked play."
+                      : "It’s on the Design Arena roster, but we don’t have a supported connection yet."}
                   </p>
                   <dl className="model-roster-specs">
                     <div>
@@ -118,8 +120,8 @@ export function ModelsRoster() {
                       <dd>{model.ranked ? "Ranked" : "Practice"}</dd>
                     </div>
                     <div>
-                      <dt>Price season</dt>
-                      <dd>{model.priceVersion === "unpriced" ? "Pending" : "Pinned"}</dd>
+                      <dt>Pricing</dt>
+                      <dd>{model.priceVersion === "unpriced" ? "Pending" : "Fixed"}</dd>
                     </div>
                   </dl>
                   {available ? (
@@ -129,9 +131,9 @@ export function ModelsRoster() {
                   ) : (
                     <span
                       className="model-route-needed"
-                      aria-label={`${model.displayName} needs a provider route`}
+                      aria-label={`${model.displayName} is not playable yet`}
                     >
-                      Route required before play
+                      Not playable yet
                     </span>
                   )}
                 </article>

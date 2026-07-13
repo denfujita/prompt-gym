@@ -12,13 +12,13 @@ export default function LeaderboardPage() {
         <div className="page-header-row">
           <div>
             <span className="eyebrow">
-              {apiMode === "demo" ? "Demo season · Day 1" : "Exact-instance leaderboard"}
+              {apiMode === "demo" ? "Demo season · Day 1" : "Your assigned task"}
             </span>
-            <h1>Daily board</h1>
-            <p>Exact solves, ranked by provider-reported tokens. Time never breaks a tie.</p>
+            <h1>Today’s board</h1>
+            <p>Verified wins, ranked by provider-reported tokens. The clock never breaks a tie.</p>
           </div>
           <span className="pill">
-            <span className="status-dot" /> {apiMode === "demo" ? "Demo · 3,217 coaches" : "Live board"}
+            <span className="status-dot" /> {apiMode === "demo" ? "Demo · 3,217 players" : "Live now"}
           </span>
         </div>
       </header>

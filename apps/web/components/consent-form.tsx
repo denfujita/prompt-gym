@@ -64,10 +64,10 @@ export function ConsentForm() {
       <div className="consent-list">
         <div className="consent-row">
           <div>
-            <h3>Run and score my attempts</h3>
+            <h3>Use my data to run the game</h3>
             <p>
-              Required to operate the game: model calls, visible activity, verifier output, usage, abuse
-              prevention, and scorekeeping. Raw operational traces are retained for no more than 30 days.
+              Required. We use model calls, visible activity, verifier results, token usage, and abuse signals
+              to run and score your attempts. Raw traces are kept for no more than 30 days.
             </p>
           </div>
           <label className="toggle">
@@ -77,11 +77,11 @@ export function ConsentForm() {
         </div>
         <div className="consent-row">
           <div>
-            <h3>Contribute sanitized runs to AI research and training</h3>
+            <h3>Share sanitized runs for AI research and training</h3>
             <p>
-              Optional. Prompt Gym may deidentify and license eligible prompts, visible model outputs, tool
-              activity, and objective outcomes to AI labs for model training and evaluation. This does not
-              change your subsidy.
+              Optional. If you opt in, Prompt Gym may remove identifying details and license eligible prompts,
+              visible AI outputs, tool activity, and objective results to AI labs for training and evaluation.
+              Your choice doesn’t affect the API costs we cover.
             </p>
           </div>
           <label className="toggle">
@@ -99,10 +99,10 @@ export function ConsentForm() {
         </div>
         <div className="consent-row">
           <div>
-            <h3>Publish my handle and replays after a season</h3>
+            <h3>Share my handle and replays after the season</h3>
             <p>
-              Optional. Successful run replays may appear publicly only after the seven-day season closes and
-              the underlying instance is retired.
+              Optional. A successful replay can become public only after the seven-day season ends and its
+              task instance is retired.
             </p>
           </div>
           <label className="toggle">
@@ -141,26 +141,26 @@ export function ConsentForm() {
         ) : null}
         {status === "error" ? (
           <span className="form-error" role="alert">
-            Choices were not saved. Check your connection and try again.
+            We couldn’t save your choices. Check your connection and try again.
           </span>
         ) : null}
       </div>
 
       <div className="danger-zone">
-        <h3>Export or delete your data</h3>
+        <h3>Download or delete your data</h3>
         <p>
-          You can request a portable export or delete your account. Withdrawal removes unexported traces from
-          future releases and issues tombstones for prior buyer deliveries; it cannot guarantee removal from
-          model weights already trained.
+          You can request a copy of your data or delete your account. Withdrawing removes unexported traces
+          from future releases and sends deletion notices for earlier buyer deliveries. We can’t guarantee
+          removal from models that were already trained.
         </p>
         <div className="hero-actions">
           <button
             className="button button-small"
             disabled
-            title="Portable export delivery is an alpha launch gate"
+            title="Data export will open during alpha"
             type="button"
           >
-            Export opens in alpha
+            Export coming in alpha
           </button>
           <button
             className="button button-small button-ghost"

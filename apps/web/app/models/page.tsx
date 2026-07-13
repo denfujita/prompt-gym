@@ -9,23 +9,26 @@ export default function ModelsPage() {
     <div className="shell models-page">
       <header className="models-hero">
         <div>
-          <span className="eyebrow">The contender wall</span>
-          <h1>Coach more models. Keep every match fair.</h1>
+          <span className="eyebrow">Choose your AI</span>
+          <h1>Every playable model gets its own arena.</h1>
         </div>
         <div className="models-hero-copy">
           <p>
-            The breadth is inspired by{" "}
+            The roster is inspired by{" "}
             <a href="https://www.designarena.ai/models" rel="noreferrer" target="_blank">
               Design Arena
             </a>
-            . Prompt Gym changes the contest: people compete to get a pinned model through an exact task with
-            the fewest tokens.
+            . Here, you coach one model through a verified task and try to do it with fewer tokens than
+            everyone else.
           </p>
           <div className="models-fairness-card">
             <span aria-hidden="true">≠</span>
             <div>
-              <strong>Models never share a raw-token leaderboard.</strong>
-              <small>Route, reasoning, tools, prices, and challenge version must match.</small>
+              <strong>No cross-model token comparisons.</strong>
+              <small>
+                Same model, route, reasoning, tools, price table, task version, seed, and sandbox—or it’s a
+                different board.
+              </small>
             </div>
           </div>
         </div>

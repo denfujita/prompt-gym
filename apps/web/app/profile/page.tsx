@@ -9,15 +9,15 @@ export default function ProfilePage() {
   return (
     <div className="shell">
       <header className="page-header">
-        <span className="eyebrow">Your training log</span>
-        <h1>Coach profile</h1>
-        <p>Track personal improvement without turning consistency into a chore.</p>
+        <span className="eyebrow">Your runs</span>
+        <h1>See how your coaching is improving.</h1>
+        <p>Track your progress without the streak pressure.</p>
       </header>
       <div className="settings-layout">
         <SettingsNav active="profile" />
         <section className="surface settings-content">
-          <span className="eyebrow">Public identity</span>
-          <h2>Form and history</h2>
+          <span className="eyebrow">Display name</span>
+          <h2>Your stats</h2>
           {apiMode === "demo" ? (
             <>
               <div className="profile-identity">
@@ -26,12 +26,12 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <h3>quietcoach</h3>
-                  <p>Illustrative pseudonymous profile · demo data</p>
+                  <p>Sample private-by-default profile</p>
                 </div>
               </div>
               <div className="profile-stats">
                 <div className="profile-stat">
-                  <small>Exact solves</small>
+                  <small>Verified wins</small>
                   <strong>11 / 16</strong>
                 </div>
                 <div className="profile-stat">
@@ -43,7 +43,7 @@ export default function ProfilePage() {
                   <strong>4 days</strong>
                 </div>
               </div>
-              <span className="eyebrow">Demo badges</span>
+              <span className="eyebrow">Sample badges</span>
               <div className="badge-grid">
                 <article className="badge-card">
                   <span aria-hidden="true">◇</span>
@@ -64,10 +64,10 @@ export default function ProfilePage() {
             </>
           ) : (
             <div className="live-state-wait">
-              <strong>Live profile metrics are not connected yet.</strong>
+              <strong>Your profile is still warming up.</strong>
               <p>
-                This page will show your server-backed handle, solves, form, and badges when the account
-                summary endpoint ships.
+                Your handle, wins, weekly activity, and badges will show here once account summaries are
+                ready.
               </p>
             </div>
           )}

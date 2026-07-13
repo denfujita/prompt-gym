@@ -68,14 +68,14 @@ export function EligibilityForm() {
           type="checkbox"
         />
         <span>
-          <strong>I am currently a United States resident.</strong>
-          <small>The first subsidized alpha is US-only.</small>
+          <strong>I’m currently a United States resident.</strong>
+          <small>This subsidized alpha is US-only.</small>
         </span>
       </label>
       {siteKey ? (
         <div className="cf-turnstile" data-callback="promptGymTurnstile" data-sitekey={siteKey} />
       ) : (
-        <p className="demo-captcha">Anti-bot check bypassed in local demo mode.</p>
+        <p className="demo-captcha">The anti-bot check is off in this local demo.</p>
       )}
       <button
         className="button button-dark button-wide"
@@ -86,12 +86,11 @@ export function EligibilityForm() {
       </button>
       {status === "error" ? (
         <p className="form-error" role="alert">
-          We could not save the eligibility check. Sign in again and retry.
+          We couldn’t save your answers. Sign in again and try once more.
         </p>
       ) : null}
       <p className="eligibility-note">
-        Optional research and public replay permissions remain off. You choose those separately after
-        entering.
+        Research sharing and public replays stay off. You can choose them separately after you enter.
       </p>
     </form>
   );

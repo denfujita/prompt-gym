@@ -22,15 +22,14 @@ export default function PlayPage() {
         <div className="page-header-row">
           <div>
             <span className="eyebrow">{apiMode === "demo" ? "Demo day · July 12" : liveDateLabel()}</span>
-            <h1>Choose how you want to play.</h1>
+            <h1>What are you in the mood for?</h1>
             <p>
-              Solve a Puzzle by discovering what is true, or enter Build to coach the AI into making something
-              that passes hidden tests.
+              Uncover a mystery in Puzzle, or coach the AI through a Build that has to survive hidden tests.
             </p>
           </div>
           <div className="lobby-meta">
             <div className="meta-card">
-              <small>{apiMode === "demo" ? "Demo energy passes" : "Ranked starts"}</small>
+              <small>{apiMode === "demo" ? "Plays left today" : "Ranked starts"}</small>
               {apiMode === "demo" ? (
                 <div className="energy-pips" aria-label="3 of 3 demo energy passes remaining">
                   <span />
@@ -38,12 +37,12 @@ export default function PlayPage() {
                   <span />
                 </div>
               ) : (
-                <strong>Checked at entry</strong>
+                <strong>Shown when you enter</strong>
               )}
             </div>
             <div className="meta-card">
-              <small>{apiMode === "demo" ? "Demo weekly form" : "Weekly form"}</small>
-              <strong>{apiMode === "demo" ? "4 day run" : "Not yet synced"}</strong>
+              <small>This week</small>
+              <strong>{apiMode === "demo" ? "Played 4 days" : "Coming soon"}</strong>
             </div>
           </div>
         </div>
@@ -53,21 +52,21 @@ export default function PlayPage() {
 
       <section className="benchmark-entry-banner" aria-labelledby="benchmark-entry-title">
         <div>
-          <span className="eyebrow">Want the hard mode preview?</span>
-          <h2 id="benchmark-entry-title">Push a pinned model beyond its one-shot benchmark score.</h2>
+          <span className="eyebrow">Want something tougher?</span>
+          <h2 id="benchmark-entry-title">Try to beat the model’s benchmark score.</h2>
           <p>
-            See the scripted Kernel Sprint walkthrough: correctness unlocks a performance band, then fewer
-            tokens wins inside that band. No model or GPU is called yet.
+            Kernel Sprint is a scripted taste of the idea. Get a correct result, push it faster, and use fewer
+            tokens than the other coaches. It doesn’t call a model or GPU yet.
           </p>
         </div>
         <Link className="button button-dark" href="/benchmarks">
-          Preview Benchmark Lab <span aria-hidden="true">→</span>
+          Try the lab preview <span aria-hidden="true">→</span>
         </Link>
       </section>
 
       <section className="lobby-bottom">
         <article className="surface history-card">
-          <h3>Your recent form</h3>
+          <h3>Recent runs</h3>
           {apiMode === "demo" ? (
             <>
               <div className="history-row">
@@ -86,34 +85,31 @@ export default function PlayPage() {
                 <span>Unsolved</span>
               </div>
               <Link className="text-link" href="/profile">
-                View demo history
+                See all demo runs
               </Link>
             </>
           ) : (
-            <p>
-              Personal history is not exposed by the live API yet. Your completed run result remains available
-              directly after verification.
-            </p>
+            <p>Your full history isn’t connected yet. You’ll still see each result as soon as a run ends.</p>
           )}
         </article>
         <article className="surface rules-card">
-          <h3>Keep it clean</h3>
+          <h3>How scoring works</h3>
           <ul className="rules-list">
             <li>
               <b>1</b>
-              <span>You only prompt. The model alone can touch the task.</span>
+              <span>You write prompts. Only the model can touch the task.</span>
             </li>
             <li>
               <b>2</b>
-              <span>All provider-reported tokens count until the first exact solve.</span>
+              <span>Every token reported for a model call counts until the first verified win.</span>
             </li>
             <li>
               <b>3</b>
-              <span>Hints unlock after two turns and move you to the assisted board.</span>
+              <span>Hints open after two turns and move the run to the assisted board.</span>
             </li>
             <li>
               <b>4</b>
-              <span>Time is displayed for fun. It never breaks a token tie.</span>
+              <span>The clock is just for fun. Token ties stay tied.</span>
             </li>
           </ul>
         </article>

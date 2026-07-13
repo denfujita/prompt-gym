@@ -137,21 +137,19 @@ export class PromptGymService {
 
   requireArena(id: string): ArenaConfig {
     const arena = this.getArena(id);
-    if (!arena)
-      throw new PromptGymError("PROVIDER_ERROR", "The run's pinned model arena is unavailable", 503);
+    if (!arena) throw new PromptGymError("PROVIDER_ERROR", "That model isn’t available right now", 503);
     return arena;
   }
 
   private selectArena(modelProfileId?: string): ArenaConfig {
     if (!modelProfileId) return this.arena;
     const profile = this.modelProfiles.find((item) => item.id === modelProfileId);
-    if (!profile)
-      throw new PromptGymError("INVALID_INPUT", "That model is not in this Prompt Gym season", 400);
+    if (!profile) throw new PromptGymError("INVALID_INPUT", "That model isn’t part of this season", 400);
     if (profile.availability !== "available") {
-      throw new PromptGymError("CONFLICT", "That model does not have a validated tool route yet", 409);
+      throw new PromptGymError("CONFLICT", "That model can’t use the challenge tools yet", 409);
     }
     const selected = this.arenasByProfileId.get(profile.id);
-    if (!selected) throw new PromptGymError("CONFLICT", "That model is not enabled on this deployment", 409);
+    if (!selected) throw new PromptGymError("CONFLICT", "That model isn’t enabled here", 409);
     return selected;
   }
 
@@ -181,7 +179,7 @@ export class PromptGymService {
     if (challenge.benchmark) {
       throw new PromptGymError(
         "BENCHMARK_NOT_ENABLED",
-        "Live Benchmark Lab runs are not enabled; the current experience is a scripted preview",
+        "Live Benchmark Lab isn’t ready yet. For now, try the scripted preview.",
         409,
       );
     }
@@ -206,7 +204,7 @@ export class PromptGymService {
         attemptId: active.id,
         actor: "system",
         type: "attempt.failed",
-        payload: { reason: "expired", message: "The ten-minute run window expired" },
+        payload: { reason: "expired", message: "The ten-minute run ended" },
       });
       active = undefined;
     }
@@ -222,19 +220,19 @@ export class PromptGymService {
     if (ranked && (now < new Date(selectedArena.startsAt) || now >= new Date(selectedArena.endsAt))) {
       throw new PromptGymError(
         "ATTEMPT_CLOSED",
-        "This arena is closed; the next ranked season is not ready yet",
+        "This season is over. The next ranked round isn’t ready yet.",
         409,
       );
     }
     if (ranked && (await this.repository.hasRankedStart(user.id, challengeSlug, day))) {
       throw new PromptGymError(
         "ENERGY_EXHAUSTED",
-        "Today's ranked start for this challenge is already used",
+        "You’ve already used today’s ranked start for this challenge",
         409,
       );
     }
     if (ranked && (await this.repository.countRankedStarts(user.id, day)) >= 3) {
-      throw new PromptGymError("ENERGY_EXHAUSTED", "All three daily energy passes are used", 409);
+      throw new PromptGymError("ENERGY_EXHAUSTED", "You’ve used all three plays for today", 409);
     }
     const id = randomUUID();
     const seedSlot = assignSeedSlot({
@@ -260,7 +258,7 @@ export class PromptGymService {
       await this.challengeService.cancelInstance(envelope.instance.id, id).catch(() => undefined);
       throw new PromptGymError(
         "CHALLENGE_ERROR",
-        "The pinned challenge image changed, so this arena was closed",
+        "The challenge setup changed, so we closed this arena",
         503,
         false,
         {
@@ -369,7 +367,7 @@ export class PromptGymService {
       payload: {
         turnId,
         code: "QUEUE_UNAVAILABLE",
-        message: "The model queue was unavailable; this prompt was not charged",
+        message: "The model queue was busy. Your prompt wasn’t charged.",
       },
     });
   }
@@ -398,14 +396,14 @@ export class PromptGymService {
       (turn) => turn.status === "completed",
     ).length;
     if (completedTurns < 2)
-      throw new PromptGymError("CONFLICT", "Hints unlock after two unsuccessful turns", 409);
+      throw new PromptGymError("CONFLICT", "Hints open after two unsuccessful turns", 409);
     const hints: Record<string, string> = {
       "signal-vault":
-        "Compare what changed after accepted and rejected actions; carry the transformation between chambers instead of restarting the search.",
+        "Compare what happens after a right and wrong action. Carry the pattern into the next chamber instead of starting over.",
       "clone-the-gremlin":
-        "Partition probes by input class, then use one discriminating example to separate the remaining transform hypotheses.",
+        "Group probes by input type, then choose one example that separates the remaining theories.",
       "rigged-race":
-        "Resolve aliases before ranking corrected times, and require both calibration and incident evidence for the cheating claim.",
+        "Match the aliases before correcting times. Don’t call it cheating unless the calibration data and incident logs both support it.",
     };
     const hint =
       hints[attempt.challengeSlug] ?? "Use the verifier feedback to eliminate one hypothesis at a time.";
@@ -452,7 +450,7 @@ export class PromptGymService {
   }> {
     const attempt = await this.requireOwnedAttempt(attemptId, userId);
     if (attempt.status !== "solved")
-      throw new PromptGymError("ATTEMPT_CLOSED", "A result is available after an exact solve", 409);
+      throw new PromptGymError("ATTEMPT_CLOSED", "Results appear after a verified win", 409);
     const events = await this.repository.listEvents(attemptId);
     const verificationEvent = [...events]
       .reverse()
@@ -461,7 +459,7 @@ export class PromptGymService {
       ? {
           passed: true,
           verifierDigest: String(verificationEvent.payload.verifierDigest ?? ""),
-          publicFeedback: String(verificationEvent.payload.publicFeedback ?? "Exact verifier passed."),
+          publicFeedback: String(verificationEvent.payload.publicFeedback ?? "The verifier passed."),
           verifiedAt: String(verificationEvent.payload.verifiedAt ?? verificationEvent.createdAt),
         }
       : undefined;
@@ -612,7 +610,7 @@ export class RunEngine {
         type: "turn.cancelled",
         payload: {
           turnId: persisted.id,
-          message: "Model turn stopped by player; provider-reported usage still counts",
+          message: "You stopped the turn. Any provider-reported tokens still count.",
         },
       });
       return true;
@@ -640,7 +638,7 @@ export class RunEngine {
       type: "turn.cancelled",
       payload: {
         turnId: target.turnId,
-        message: "Model turn stopped by player; provider-reported usage still counts",
+        message: "You stopped the turn. Any provider-reported tokens still count.",
       },
     });
     if (exhausted) {
@@ -651,7 +649,7 @@ export class RunEngine {
         type: "attempt.budget_exhausted",
         payload: {
           code: "COST_BUDGET",
-          message: "The unresolved provider call consumed the remaining covered budget",
+          message: "The unfinished model call used the rest of the covered budget.",
         },
       });
     }
@@ -681,7 +679,7 @@ export class RunEngine {
           payload: {
             turnId,
             code: "WORKER_INTERRUPTED",
-            message: "The worker stopped during an unconfirmed model call; the turn was not retried",
+            message: "The connection ended before the provider confirmed the call, so we didn’t retry it.",
             retryable: false,
             conservativeChargeNanoUsd: recovery.chargedNanoUsd,
           },
@@ -693,7 +691,7 @@ export class RunEngine {
           type: "attempt.failed",
           payload: {
             code: "WORKER_INTERRUPTED",
-            message: "This run closed to prevent an unconfirmed model call from being charged twice",
+            message: "We closed this run rather than risk charging the same call twice.",
           },
         });
       }
@@ -808,7 +806,7 @@ export class RunEngine {
         ) {
           throw new PromptGymError(
             "PROVIDER_ERROR",
-            "The pinned model changed, so this arena was closed",
+            "The model setup changed, so we closed this arena",
             503,
             false,
             { expected: pinnedArena.resolvedModel, resolved: response.resolvedModel },
@@ -827,7 +825,7 @@ export class RunEngine {
             turnId,
             actor: "system",
             type: "turn.cancelled",
-            payload: { turnId, message: "The run closed while the model call was finishing" },
+            payload: { turnId, message: "The run ended while the model call was finishing." },
           });
           return;
         }
@@ -1010,7 +1008,7 @@ export class RunEngine {
       payload: {
         turnId,
         code: "ATTEMPT_EXPIRED",
-        message: "The ten-minute run window expired",
+        message: "The ten-minute run ended",
         retryable: false,
       },
     });
@@ -1019,7 +1017,7 @@ export class RunEngine {
       turnId,
       actor: "system",
       type: "attempt.failed",
-      payload: { reason: "expired", message: "The ten-minute run window expired" },
+      payload: { reason: "expired", message: "The ten-minute run ended" },
     });
     return true;
   }
@@ -1119,7 +1117,7 @@ export class RunEngine {
         turnId,
         actor: "system",
         type: "attempt.failed",
-        payload: { reason: "prompt_limit", message: "No coaching prompts remain" },
+        payload: { reason: "prompt_limit", message: "You’ve used all six coaching prompts" },
       });
     } else {
       await this.service.repository.updateAttempt(attemptId, (current) =>

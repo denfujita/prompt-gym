@@ -16,14 +16,14 @@ export default async function ReplayPage({ params }: { params: Promise<{ id: str
       <header className="page-header">
         <div className="page-header-row">
           <div>
-            <span className="eyebrow">Season-closed replay</span>
+            <span className="eyebrow">Replay from a finished season</span>
             <h1>{replay.handle}’s solve</h1>
             <p>
-              {formatTokens(replay.tokens)} tokens · {replay.turns} coaching turns · exact verifier pass
+              {formatTokens(replay.tokens)} tokens · {replay.turns} turns · verified win
             </p>
           </div>
           <span className="pill">
-            {apiMode === "demo" ? "Demo · #1 on this instance" : "Published after season close"}
+            {apiMode === "demo" ? "Demo · #1 on this board" : "Published after the season"}
           </span>
         </div>
       </header>

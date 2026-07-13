@@ -88,15 +88,15 @@ export function LeaderboardClient() {
 
       <div className="board-callout">
         <p>
-          <strong>Fair board:</strong>{" "}
+          <strong>Fair match:</strong>{" "}
           {needsInstance
-            ? "Start this challenge once to reveal your exact-instance board."
-            : "Scores are compared only within the same hidden instance, model configuration, and challenge version."}
+            ? "Start this challenge to see the board for your assigned task."
+            : "You’re compared only with runs using the same hidden task, model setup, and challenge version."}
         </p>
         {apiMode === "demo" ? (
           <span className="pill">Demo closes in 06:18:42</span>
         ) : (
-          <span className="pill">Season timing set by server</span>
+          <span className="pill">Season closes on schedule</span>
         )}
       </div>
 
@@ -120,12 +120,12 @@ export function LeaderboardClient() {
                 <td>{entry.isCurrentUser ? `${entry.handle} · you` : entry.handle}</td>
                 <td>{formatTokens(entry.tokens)}</td>
                 <td>{entry.turns}</td>
-                <td>Exact solve</td>
+                <td>Verified win</td>
               </tr>
             ))}
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={5}>No exact-instance solves are visible on this track yet.</td>
+                <td colSpan={5}>No verified wins here yet.</td>
               </tr>
             ) : null}
           </tbody>

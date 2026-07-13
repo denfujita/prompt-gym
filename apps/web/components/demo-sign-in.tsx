@@ -18,7 +18,7 @@ export function DemoSignIn() {
         </span>
         <span className="eyebrow">Alpha access</span>
         <h1>Enter the gym</h1>
-        <p>Sign in protects one ranked start per daily challenge and keeps the leaderboard fair.</p>
+        <p>Signing in keeps daily ranked entries—and the leaderboard—fair.</p>
         <div className="auth-buttons">
           <button className="button button-dark button-wide" onClick={signIn} type="button">
             Continue with Google
@@ -28,8 +28,8 @@ export function DemoSignIn() {
           </button>
         </div>
         <p className="auth-disclaimer">
-          Local demo mode is active until Clerk keys are configured. By continuing, you confirm you are 18+
-          and currently in the United States.
+          This local demo is standing in for sign-in. By continuing, you confirm that you’re 18 or older and
+          currently in the United States.
         </p>
       </section>
     </div>
