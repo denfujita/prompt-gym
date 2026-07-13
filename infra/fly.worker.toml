@@ -1,0 +1,13 @@
+app = "prompt-gym-worker"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "apps/worker/Dockerfile"
+
+[processes]
+  worker = "node apps/worker/dist/index.js"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

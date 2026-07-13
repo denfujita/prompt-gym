@@ -1,0 +1,26 @@
+{
+  "name": "prompt-gym",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env node_modules/concurrently/dist/bin/concurrently.js -n web,api -c cyan,magenta \"npm run dev -w @prompt-gym/web\" \"npm run dev -w @prompt-gym/api\"",
+    "dev:all": "node --env-file-if-exists=.env node_modules/concurrently/dist/bin/concurrently.js -n web,api,worker -c cyan,magenta,yellow \"npm run dev -w @prompt-gym/web\" \"npm run dev -w @prompt-gym/api\" \"npm run dev -w @prompt-gym/worker\"",
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "prettier --check ."
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
