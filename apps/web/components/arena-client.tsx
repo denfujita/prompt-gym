@@ -8,6 +8,7 @@ import {
   cancelAttempt,
   createAttempt,
   listModels,
+  PromptGymApiError,
   submitTurn,
   subscribeToAttempt,
   unlockHint,
@@ -74,6 +75,9 @@ export function ArenaClient({
   const [briefExpanded, setBriefExpanded] = useState(false);
   const [connectionNote, setConnectionNote] = useState("Getting your run ready…");
   const [modelLabel, setModelLabel] = useState("the selected model");
+  const [runGate, setRunGate] = useState<
+    { title: string; body: string; href?: string; action?: string } | undefined
+  >();
   const timelineRef = useRef<HTMLDivElement>(null);
   const timersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const authoritativeEventsRef = useRef<RunEvent[]>([]);
@@ -91,6 +95,11 @@ export function ArenaClient({
   const publicTaskState = useMemo(() => latestTaskState(displayedEvents), [displayedEvents]);
   const progress = solved ? 3 : apiMode === "demo" ? turn : taskProgress(challenge.slug, publicTaskState);
   const suggestion = promptSuggestions[challenge.slug][Math.min(turn, 2)]!;
+  const arenaReturnTo = useMemo(() => {
+    const params = new URLSearchParams({ mode: attemptMode });
+    if (modelProfileId) params.set("model", modelProfileId);
+    return `/arena/${challenge.slug}?${params.toString()}`;
+  }, [attemptMode, challenge.slug, modelProfileId]);
 
   useEffect(() => {
     let active = true;
@@ -113,6 +122,7 @@ export function ArenaClient({
     void createAttempt(challenge.slug, apiMode === "demo" ? "practice" : attemptMode, modelProfileId)
       .then(({ attempt: created, events: bootstrapEvents }) => {
         if (!active) return;
+        setRunGate(undefined);
         setAttempt(created);
         if (created.seedCommitment)
           localStorage.setItem(`prompt-gym:seed:${created.challengeSlug}`, created.seedCommitment);
@@ -136,9 +146,33 @@ export function ArenaClient({
           () => setConnectionNote("Connected"),
         );
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!active) return;
-        setConnectionNote("Sign in and confirm you’re 18+ and in the US to play live");
+        const isAuthError = error instanceof PromptGymApiError && error.status === 401;
+        const isEligibilityError = error instanceof PromptGymApiError && error.status === 403;
+        const gate = isAuthError
+          ? {
+              title: "Sign in to start this run",
+              body: "We’ll bring you back to this exact task afterward.",
+              href: `/sign-in?returnTo=${encodeURIComponent(arenaReturnTo)}`,
+              action: "Sign in",
+            }
+          : isEligibilityError
+            ? {
+                title: "One quick eligibility check",
+                body: "Confirm you’re 18+ and currently in the US, then this run can start.",
+                href: `/eligibility?returnTo=${encodeURIComponent(arenaReturnTo)}`,
+                action: "Confirm eligibility",
+              }
+            : {
+                title: "This run couldn’t start",
+                body:
+                  error instanceof PromptGymApiError
+                    ? error.publicMessage
+                    : "Check your connection and try again in a moment.",
+              };
+        setRunGate(gate);
+        setConnectionNote(gate.title);
         setEvents((current) => [
           ...current,
           {
@@ -146,8 +180,8 @@ export function ArenaClient({
             sequence: current.length + 1,
             actor: "system",
             type: "model.status",
-            title: "Live run not started",
-            body: "Sign in, complete the one-time eligibility check, then come back here.",
+            title: gate.title,
+            body: gate.body,
             createdAt: new Date().toISOString(),
           },
         ]);
@@ -158,7 +192,7 @@ export function ArenaClient({
       unsubscribe();
       timersRef.current.forEach(clearTimeout);
     };
-  }, [attemptMode, challenge.slug, modelProfileId]);
+  }, [arenaReturnTo, attemptMode, challenge.slug, modelProfileId]);
 
   useEffect(() => {
     const target = timelineRef.current;
@@ -403,6 +437,19 @@ export function ArenaClient({
       </div>
 
       <div className="prompt-dock">
+        {runGate ? (
+          <div className="run-gate" role="alert">
+            <div>
+              <strong>{runGate.title}</strong>
+              <span>{runGate.body}</span>
+            </div>
+            {runGate.href && runGate.action ? (
+              <Link className="button button-small button-volt" href={runGate.href}>
+                {runGate.action} →
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
         <form className="prompt-form" onSubmit={handleSubmit}>
           <div className="prompt-input-stack">
             <div className="prompt-guidance">

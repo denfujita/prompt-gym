@@ -5,6 +5,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 
 import { AnalyticsProvider } from "@/components/analytics-provider";
 import { MobileDock, SiteHeader } from "@/components/site-header";
+import { isClerkMode } from "@/lib/auth-client";
 
 import "./globals.css";
 
@@ -42,7 +43,7 @@ function Frame({ children }: { children: ReactNode }) {
 }
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
-  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+  const clerkEnabled = isClerkMode();
 
   return (
     <html lang="en">

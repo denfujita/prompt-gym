@@ -1,13 +1,35 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function DemoSignIn() {
+import {
+  DEMO_AUTH_EVENT,
+  endDemoSession,
+  hasDemoEligibility,
+  readDemoSession,
+  startDemoSession,
+  type DemoSession,
+} from "@/lib/auth-client";
+
+export function DemoSignIn({ returnTo }: { returnTo: string }) {
   const router = useRouter();
+  const [session, setSession] = useState<DemoSession | null>(null);
+
+  useEffect(() => {
+    const refresh = () => setSession(readDemoSession());
+    refresh();
+    window.addEventListener(DEMO_AUTH_EVENT, refresh);
+    return () => window.removeEventListener(DEMO_AUTH_EVENT, refresh);
+  }, []);
 
   function signIn() {
-    window.localStorage.setItem("prompt-gym-demo-user", "quietcoach");
-    router.push("/play");
+    startDemoSession();
+    router.push(`/eligibility?returnTo=${encodeURIComponent(returnTo)}`);
+  }
+
+  function continueSession() {
+    router.push(hasDemoEligibility() ? returnTo : `/eligibility?returnTo=${encodeURIComponent(returnTo)}`);
   }
 
   return (
@@ -16,20 +38,36 @@ export function DemoSignIn() {
         <span className="brand-mark" aria-hidden="true">
           PG
         </span>
-        <span className="eyebrow">Alpha access</span>
-        <h1>Enter the gym</h1>
-        <p>Signing in keeps daily ranked entries—and the leaderboard—fair.</p>
+        <span className="eyebrow">Local demo access</span>
+        <h1>{session ? "You’re signed in" : "Enter the gym"}</h1>
+        <p>
+          {session
+            ? `Welcome back, ${session.handle}.`
+            : "Use the demo account to test sign-in, eligibility, and sign-out without calling an outside service."}
+        </p>
         <div className="auth-buttons">
-          <button className="button button-dark button-wide" onClick={signIn} type="button">
-            Continue with Google
-          </button>
-          <button className="button button-wide" onClick={signIn} type="button">
-            Continue with Apple
-          </button>
+          {session ? (
+            <>
+              <button className="button button-dark button-wide" onClick={continueSession} type="button">
+                Continue as {session.handle} →
+              </button>
+              <button
+                className="button button-ghost button-wide"
+                onClick={() => endDemoSession()}
+                type="button"
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <button className="button button-dark button-wide" onClick={signIn} type="button">
+              Continue with demo account →
+            </button>
+          )}
         </div>
         <p className="auth-disclaimer">
-          This local demo is standing in for sign-in. By continuing, you confirm that you’re 18 or older and
-          currently in the United States.
+          Google and Apple appear here only when Clerk is configured. This local session stays in your browser
+          and never leaves this device.
         </p>
       </section>
     </div>

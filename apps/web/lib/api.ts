@@ -6,6 +6,14 @@ import {
   getChallenge,
   leaderboard as demoLeaderboard,
 } from "./demo-data";
+import {
+  getClerkToken,
+  hasDemoEligibility,
+  isClerkMode,
+  isLoopbackUrl,
+  readDemoSession,
+  saveDemoEligibility,
+} from "./auth-client";
 import type {
   Attempt,
   AttemptResult,
@@ -23,17 +31,27 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
 
 export const apiMode = API_URL ? "live" : "demo";
 
-type ClerkBrowser = {
-  session?: { getToken(options?: { template?: string }): Promise<string | null> };
-};
+export class PromptGymApiError extends Error {
+  readonly name = "PromptGymApiError";
+
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    readonly publicMessage: string,
+    readonly retryable = false,
+  ) {
+    super(publicMessage);
+  }
+}
 
 async function authHeaders(): Promise<Record<string, string>> {
   if (typeof window === "undefined") return {};
-  const clerk = (window as typeof window & { Clerk?: ClerkBrowser }).Clerk;
-  const token = await clerk?.session?.getToken().catch(() => null);
+  const token = await getClerkToken();
   if (token) return { authorization: `Bearer ${token}` };
   const demoUser = process.env.NEXT_PUBLIC_DEMO_USER_ID;
-  return demoUser ? { "x-prompt-gym-user": demoUser } : {};
+  return !isClerkMode() && demoUser && isLoopbackUrl(API_URL) && readDemoSession()
+    ? { "x-prompt-gym-user": demoUser }
+    : {};
 }
 
 type WireChallenge = {
@@ -311,9 +329,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Prompt Gym API returned ${response.status}`);
+    const payload = (await response.json().catch(() => undefined)) as
+      { error?: { code?: string; message?: string; retryable?: boolean } } | undefined;
+    throw new PromptGymApiError(
+      response.status,
+      payload?.error?.code ?? "UNKNOWN",
+      payload?.error?.message ?? "Prompt Gym couldn’t complete that request.",
+      payload?.error?.retryable ?? response.status >= 500,
+    );
   }
 
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -349,6 +375,13 @@ export async function createAttempt(
       events: payload.events?.map(normalizeEvent) ?? [],
     };
   }
+  if (!readDemoSession()) throw new PromptGymApiError(401, "AUTH_REQUIRED", "Sign in before starting a run.");
+  if (!hasDemoEligibility())
+    throw new PromptGymApiError(
+      403,
+      "ELIGIBILITY_REQUIRED",
+      "Confirm your age and region before starting a run.",
+    );
   return {
     attempt: {
       id: `demo-${challengeSlug}-${Date.now()}`,
@@ -609,5 +642,11 @@ export async function saveEligibility(input: {
   version: string;
   turnstileToken?: string;
 }): Promise<void> {
+  if (!API_URL) {
+    if (!readDemoSession())
+      throw new PromptGymApiError(401, "AUTH_REQUIRED", "Sign in before confirming eligibility.");
+    saveDemoEligibility(input.version);
+    return;
+  }
   await request("/v1/eligibility", { method: "POST", body: JSON.stringify(input) });
 }

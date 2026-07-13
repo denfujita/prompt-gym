@@ -35,7 +35,7 @@ npm install
 npm run dev
 ```
 
-The web app runs at `http://localhost:3000`, the public API at `http://localhost:4000`, and the private challenge service at `http://localhost:4100`. `ALLOW_DEMO_AUTH=true`, a missing `REDIS_URL`, and a missing `OPENAI_API_KEY` activate the local authenticated-header, inline-runner, and scripted-model fallbacks.
+The web app runs at `http://localhost:3000`, the public API at `http://localhost:4000`, and the private challenge service at `http://localhost:4100`. Sign in with the clearly labeled local demo account; its session and eligibility check stay in browser storage. `ALLOW_DEMO_AUTH=true`, a missing `REDIS_URL`, and a missing `OPENAI_API_KEY` activate the local signed-in header, inline runner, and scripted-model fallbacks.
 
 ## Validation
 

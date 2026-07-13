@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { AuthControls } from "./auth-controls";
 import { Brand } from "./brand";
+import { isClerkMode } from "@/lib/auth-client";
 
 const nav = [
   { href: "/play", label: "Daily Gym", shortLabel: "Daily", symbol: "◇" },
@@ -15,6 +17,7 @@ const nav = [
 
 export function SiteHeader() {
   const pathname = usePathname();
+  const clerkEnabled = isClerkMode();
 
   return (
     <header className="site-header">
@@ -31,9 +34,7 @@ export function SiteHeader() {
             </Link>
           ))}
         </nav>
-        <Link className="button button-small button-dark" href="/sign-in">
-          Sign in
-        </Link>
+        <AuthControls clerkEnabled={clerkEnabled} pathname={pathname} />
       </div>
     </header>
   );
