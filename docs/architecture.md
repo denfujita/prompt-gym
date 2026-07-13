@@ -18,7 +18,7 @@ flowchart LR
 ## Trust boundaries
 
 - The browser submits commands and consumes ordered events; it is never authoritative for state, usage, cost, or verification.
-- The API authenticates, applies limits, atomically records the prompt plus its hash-linked queued event, and exposes replayable SSE. Queued turn rows are the durable outbox; an idempotent dispatcher sweep repairs missed BullMQ delivery.
+- The API authenticates, applies limits, atomically records the prompt plus its hash-linked queued event, and exposes replayable SSE. Every downstream event, usage item, and verification retains explicit same-attempt `turn_id` lineage. Queued turn rows are immutable durable outbox records; an idempotent dispatcher sweep repairs missed BullMQ delivery.
 - The worker owns model requests, allowlisted tool loops, provider usage settlement, and terminal attempt state.
 - The public worker receives only public instance state and opaque private references.
 - The executor never receives verifier source or expected answers. The verifier receives only the frozen artifact and scoped fixture.
@@ -28,7 +28,7 @@ flowchart LR
 
 The core depends on repository, queue, provider, and challenge-service interfaces. Local development uses in-memory repositories, inline jobs, a scripted provider, and the sibling challenge service. Hosted execution selects PostgreSQL, BullMQ, OpenAI, and a private challenge-service adapter through environment configuration.
 
-Implemented now: PostgreSQL durability, transactional queued turns, idempotent usage-and-score accounting, BullMQ recovery, worker-owned model/tool orchestration, replayable SSE, and the OpenAI/private-service adapters. R2 post-season archival and the separately deployed Modal executor/verifier are deployment gates, not silently emulated by the local adapter.
+Implemented now: PostgreSQL durability, transactional queued turns, per-turn trajectory lineage, idempotent usage-and-score accounting, BullMQ recovery, worker-owned model/tool orchestration, replayable SSE, and the OpenAI/private-service adapters. The encrypted prompt vault, R2 post-season archival, and separately deployed Modal executor/verifier are deployment gates, not silently emulated by the local adapter. See [prompt-storage.md](prompt-storage.md).
 
 ## Run state machine
 

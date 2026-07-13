@@ -12,6 +12,8 @@ The free subsidy is not conditional on either optional choice. Withdrawal is as 
 
 ## Lifecycle
 
+The lifecycle below is the ranked-release policy. The current alpha has consent-aware account deletion and export redaction, but raw prompts are still duplicated in PostgreSQL and do not yet have application-level field encryption or automated 30-day expiry. Public replay is therefore owner-only even with publication consent. The prompt vault and replay redaction pipeline in [prompt-storage.md](prompt-storage.md) are ranked-release gates.
+
 - Raw trajectories enter encrypted quarantine for no more than 30 days.
 - Secret, PII, path, URL, and near-duplicate scanners produce explicit redaction and quality records.
 - Only consented Grade-A episodes with complete event chains, deterministic replay, clean task rights, and no unresolved integrity flags enter a release.

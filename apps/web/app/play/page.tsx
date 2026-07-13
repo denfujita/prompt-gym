@@ -22,8 +22,11 @@ export default function PlayPage() {
         <div className="page-header-row">
           <div>
             <span className="eyebrow">{apiMode === "demo" ? "Demo day · July 12" : liveDateLabel()}</span>
-            <h1>Today’s gym</h1>
-            <p>Three fresh problems. One ranked start per task. Your first exact solve locks your score.</p>
+            <h1>Choose how you want to play.</h1>
+            <p>
+              Solve a Puzzle by discovering what is true, or enter Build to coach the AI into making something
+              that passes hidden tests.
+            </p>
           </div>
           <div className="lobby-meta">
             <div className="meta-card">
@@ -54,17 +57,17 @@ export default function PlayPage() {
           {apiMode === "demo" ? (
             <>
               <div className="history-row">
-                <span>Signal Vault</span>
+                <span>Crack the Signal Vault</span>
                 <strong>2,843</strong>
                 <span>Top 8%</span>
               </div>
               <div className="history-row">
-                <span>Rigged Race</span>
+                <span>Who Rigged the Race?</span>
                 <strong>3,204</strong>
                 <span>Top 19%</span>
               </div>
               <div className="history-row">
-                <span>Clone the Gremlin</span>
+                <span>Copy the Gremlin</span>
                 <strong>—</strong>
                 <span>Unsolved</span>
               </div>

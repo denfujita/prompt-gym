@@ -75,6 +75,7 @@ export function buildEpisodeV1(input: EpisodeBuildInput): EpisodeV1 {
     const payload = sanitize(event.payload, redaction) as Record<string, JsonValue>;
     return {
       sequence: event.sequence,
+      ...(event.turnId ? { turnId: event.turnId } : {}),
       actor: event.actor,
       type: event.type,
       payload,
@@ -82,6 +83,7 @@ export function buildEpisodeV1(input: EpisodeBuildInput): EpisodeV1 {
       hash: sha256(
         stableJson({
           sequence: event.sequence,
+          ...(event.turnId ? { turnId: event.turnId } : {}),
           actor: event.actor,
           type: event.type,
           payload,
@@ -125,6 +127,7 @@ export function buildEpisodeV1(input: EpisodeBuildInput): EpisodeV1 {
     usage: structuredClone(input.usage),
     outcome: {
       passed: true,
+      ...(input.verification.turnId ? { turnId: input.verification.turnId } : {}),
       verifierDigest: input.verification.verifierDigest,
       artifactHashes: [...(input.artifactHashes ?? [])].sort(),
     },

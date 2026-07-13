@@ -6,35 +6,83 @@ import type { Challenge } from "@/lib/types";
 
 import { Mascot } from "./mascot";
 
-export function ChallengeCard({ challenge, order }: { challenge: Challenge; order: number }) {
+const cardCopy: Record<Challenge["slug"], { role: string; format: string; cta: string }> = {
+  "signal-vault": {
+    role: "Tell it what to test next and help it connect the clues.",
+    format: "Visual actions",
+    cta: "Crack the vault",
+  },
+  "rigged-race": {
+    role: "Tell it which file, alias, or timestamp to investigate next.",
+    format: "Evidence answer",
+    cta: "Solve the case",
+  },
+  "clone-the-gremlin": {
+    role: "Choose revealing test inputs, then tell the AI what to fix.",
+    format: "Working code",
+    cta: "Build the clone",
+  },
+};
+
+export function ChallengeCard({
+  challenge,
+  mode,
+  order,
+}: {
+  challenge: Challenge;
+  mode: "Puzzle" | "Build";
+  order: number;
+}) {
+  const copy = cardCopy[challenge.slug];
   return (
     <article className={`challenge-card accent-${challenge.accent}`}>
       <div className="challenge-card-top">
         <div>
           <span className="eyebrow">
-            0{order} · {challenge.category}
+            {mode} {order} · {challenge.category}
           </span>
           <h3>{challenge.name}</h3>
         </div>
         <Mascot accent={challenge.accent} />
       </div>
       <p>{challenge.brief}</p>
-      <dl className="challenge-stats">
+      <div className="challenge-explainer">
         <div>
-          <dt>Best today</dt>
-          <dd>
-            {challenge.cheapestTokens === null ? "After entry" : formatTokens(challenge.cheapestTokens)}
-          </dd>
+          <small>Your role</small>
+          <p>{copy.role}</p>
         </div>
         <div>
-          <dt>Players</dt>
-          <dd>{challenge.playersToday === null ? "Exact seed" : compactNumber(challenge.playersToday)}</dd>
+          <small>Verified win</small>
+          <p>{challenge.objective}</p>
+        </div>
+      </div>
+      <dl className="challenge-stats">
+        <div>
+          <dt>Outcome</dt>
+          <dd>{copy.format}</dd>
+        </div>
+        <div>
+          <dt>Time box</dt>
+          <dd>{challenge.timeLimitMinutes} min</dd>
         </div>
         <div>
           <dt>Difficulty</dt>
           <dd>{challenge.difficulty}</dd>
         </div>
       </dl>
+      <div className="challenge-benchmark">
+        <span>Cheapest verified solve</span>
+        <strong>
+          {challenge.cheapestTokens === null
+            ? "Revealed after entry"
+            : formatTokens(challenge.cheapestTokens)}
+        </strong>
+        <small>
+          {challenge.playersToday === null
+            ? "Compared on your exact seed"
+            : `${compactNumber(challenge.playersToday)} players today`}
+        </small>
+      </div>
       <div className="challenge-card-footer">
         <span
           className="energy-cost"
@@ -43,7 +91,7 @@ export function ChallengeCard({ challenge, order }: { challenge: Challenge; orde
           <span aria-hidden="true">⚡</span> {apiMode === "demo" ? "1 demo pass" : "Ranked start"}
         </span>
         <Link className="button button-dark" href={`/arena/${challenge.slug}`}>
-          Enter challenge <span aria-hidden="true">→</span>
+          {copy.cta} <span aria-hidden="true">→</span>
         </Link>
       </div>
     </article>

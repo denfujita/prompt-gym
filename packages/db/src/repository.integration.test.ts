@@ -22,11 +22,15 @@ const manifest: ChallengeManifest = {
   version: "1.0.0",
   title: "Signal Vault",
   shortDescription: "Open the vault.",
+  playerBrief: "A short player story.",
+  winCondition: "Open every chamber.",
   brief: "Use the visible controls to open all chambers.",
   kind: "visual",
+  playMode: "puzzle",
   accent: { name: "Volt", hex: "#dfff00", symbol: "⚡" },
   difficulty: "hard",
   estimatedMinutes: 8,
+  actionBudgetLabel: "24 control actions",
   maxPrompts: 6,
   maxToolActionsPerTurn: 8,
   maxCompetitionTokens: 20_000,
@@ -146,6 +150,24 @@ suite("PostgresPromptGymRepository", () => {
     const queued = await repository.queueTurn(turn);
     expect(queued.attempt.promptsUsed).toBe(2);
     expect(queued.event.type).toBe("turn.queued");
+    expect(queued.event.turnId).toBe(turn.id);
+    const retried = await repository.queueTurn(turn);
+    expect(retried.event.id).toBe(queued.event.id);
+    expect(retried.attempt.promptsUsed).toBe(2);
+    await expect(repository.queueTurn({ ...turn, prompt: "Changed prompt" })).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    for (const mutation of [
+      { id: randomUUID() },
+      { attemptId: randomUUID() },
+      { ordinal: 2 },
+      { prompt: "Changed prompt" },
+      { createdAt: "2026-07-12T12:00:09.000Z" },
+    ]) {
+      await expect(
+        repository.updateTurn(turn.id, (current) => ({ ...current, ...mutation })),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+    }
     await repository.updateTurn(turn.id, (current) => ({
       ...current,
       status: "running",
@@ -177,6 +199,16 @@ suite("PostgresPromptGymRepository", () => {
   it("deduplicates provider usage and stores verifier results without a private ref", async () => {
     const state = attempt(`usage-${randomUUID()}`);
     await repository.createAttempt(state, { ...envelope(), instance: state.instance });
+    await repository.updateAttempt(state.id, (current) => ({ ...current, status: "ready" }));
+    const turn: Turn = {
+      id: randomUUID(),
+      attemptId: state.id,
+      ordinal: 1,
+      prompt: "Check the evidence once.",
+      status: "queued",
+      createdAt: "2026-07-12T12:00:59.000Z",
+    };
+    await repository.queueTurn(turn);
     const usage: UsageV1 = {
       schemaVersion: "usage.v1",
       provider: "openai",
@@ -194,20 +226,194 @@ suite("PostgresPromptGymRepository", () => {
       actualCostNanoUsd: 1000,
       createdAt: "2026-07-12T12:01:00.000Z",
     };
-    await Promise.all([repository.recordUsage(state.id, usage), repository.recordUsage(state.id, usage)]);
-    expect(await repository.listUsage(state.id)).toEqual([usage]);
+    await Promise.all([
+      repository.recordUsage(state.id, usage, turn.id),
+      repository.recordUsage(state.id, usage, turn.id),
+    ]);
+    expect(await repository.listUsage(state.id)).toEqual([{ ...usage, turnId: turn.id }]);
     expect(await repository.getAttempt(state.id)).toMatchObject({
       competitionTokens: 125,
       actualCostNanoUsd: 1000,
     });
     await expect(
-      repository.recordVerification(state.id, {
-        passed: false,
-        verifierDigest: "sha256:verifier",
-        publicFeedback: "Try again.",
-        verifiedAt: "2026-07-12T12:01:01.000Z",
-      }),
+      repository.recordVerification(
+        state.id,
+        {
+          passed: false,
+          verifierDigest: "sha256:verifier",
+          publicFeedback: "Try again.",
+          verifiedAt: "2026-07-12T12:01:01.000Z",
+        },
+        turn.id,
+      ),
     ).resolves.toBeUndefined();
+    const linked = await admin<{ usage_turn_id: string | null; verification_turn_id: string | null }[]>`
+      select usage.turn_id as usage_turn_id, verification.turn_id as verification_turn_id
+      from usage_item usage
+      join verification_run verification on verification.attempt_id = usage.attempt_id
+      where usage.attempt_id = ${state.id}
+    `;
+    expect(linked[0]).toEqual({ usage_turn_id: turn.id, verification_turn_id: turn.id });
+  });
+
+  it("rejects cross-attempt turn lineage in repositories and composite constraints", async () => {
+    const first = attempt(`lineage-a-${randomUUID()}`);
+    const second = attempt(`lineage-b-${randomUUID()}`);
+    await repository.createAttempt(first, { ...envelope(), instance: first.instance });
+    await repository.createAttempt(second, { ...envelope(), instance: second.instance });
+    await repository.updateAttempt(second.id, (current) => ({ ...current, status: "ready" }));
+    const foreignTurn: Turn = {
+      id: randomUUID(),
+      attemptId: second.id,
+      ordinal: 1,
+      prompt: "Inspect the other attempt.",
+      status: "queued",
+      createdAt: "2026-07-12T12:01:10.000Z",
+    };
+    await repository.queueTurn(foreignTurn);
+    const usage: UsageV1 = {
+      schemaVersion: "usage.v1",
+      provider: "openai",
+      providerResponseId: `resp-${randomUUID()}`,
+      resolvedModel: arena.resolvedModel,
+      inputTokens: 10,
+      cachedInputTokens: 0,
+      cacheWriteTokens: 0,
+      outputTokens: 5,
+      reasoningTokens: 0,
+      totalTokens: 15,
+      imageTokens: 0,
+      toolUnits: 0,
+      priceVersion: arena.priceVersion,
+      actualCostNanoUsd: 100,
+      createdAt: "2026-07-12T12:01:11.000Z",
+    };
+
+    await expect(
+      repository.appendEvent({
+        attemptId: first.id,
+        turnId: foreignTurn.id,
+        actor: "model",
+        type: "model.message",
+        payload: { text: "wrong attempt" },
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(repository.recordUsage(first.id, usage, foreignTurn.id)).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    await expect(
+      repository.recordVerification(
+        first.id,
+        {
+          passed: false,
+          verifierDigest: "sha256:lineage",
+          publicFeedback: "No",
+          verifiedAt: "2026-07-12T12:01:12.000Z",
+        },
+        foreignTurn.id,
+      ),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    await expect(
+      admin`
+        insert into run_event
+          (id, attempt_id, turn_id, sequence, actor, event_type, public_payload, previous_hash, hash, created_at)
+        values (
+          ${randomUUID()}, ${first.id}, ${foreignTurn.id}, 1, 'model', 'model.message', '{}'::jsonb,
+          ${GENESIS_EVENT_HASH}, ${"1".repeat(64)}, now()
+        )
+      `,
+    ).rejects.toMatchObject({ code: "23503", constraint_name: "run_event_attempt_turn_fk" });
+    await expect(
+      admin`
+        insert into usage_item (
+          attempt_id, turn_id, provider, provider_response_id, resolved_model, input_tokens,
+          cached_input_tokens, cache_write_tokens, output_tokens, reasoning_tokens,
+          total_tokens, image_tokens, tool_units, price_version, actual_cost_nano_usd, created_at
+        ) values (
+          ${first.id}, ${foreignTurn.id}, 'openai', ${`direct-${randomUUID()}`}, ${arena.resolvedModel},
+          1, 0, 0, 1, 0, 2, 0, 0, ${arena.priceVersion}, 1, now()
+        )
+      `,
+    ).rejects.toMatchObject({ code: "23503", constraint_name: "usage_item_attempt_turn_fk" });
+    await expect(
+      admin`
+        insert into verification_run
+          (attempt_id, turn_id, passed, verifier_digest, public_feedback, verified_at)
+        values (${first.id}, ${foreignTurn.id}, false, 'sha256:direct-lineage', 'No', now())
+      `,
+    ).rejects.toMatchObject({ code: "23503", constraint_name: "verification_run_attempt_turn_fk" });
+    expect(await repository.listEvents(first.id)).toEqual([]);
+    expect(await repository.listUsage(first.id)).toEqual([]);
+    expect(await repository.getAttempt(first.id)).toMatchObject({
+      lastEventSequence: 0,
+      lastEventHash: GENESIS_EVENT_HASH,
+      competitionTokens: 0,
+      actualCostNanoUsd: 0,
+    });
+  });
+
+  it("preserves hash-attested turn ids on direct deletion while account deletion still cascades", async () => {
+    const state = attempt(`delete-lineage-${randomUUID()}`);
+    await repository.createAttempt(state, { ...envelope(), instance: state.instance });
+    await repository.updateAttempt(state.id, (current) => ({ ...current, status: "ready" }));
+    const turn: Turn = {
+      id: randomUUID(),
+      attemptId: state.id,
+      ordinal: 1,
+      prompt: "Keep this lineage intact.",
+      status: "queued",
+      createdAt: "2026-07-12T12:01:20.000Z",
+    };
+    await repository.queueTurn(turn);
+    const usage: UsageV1 = {
+      schemaVersion: "usage.v1",
+      provider: "openai",
+      providerResponseId: `resp-${randomUUID()}`,
+      resolvedModel: arena.resolvedModel,
+      inputTokens: 10,
+      cachedInputTokens: 0,
+      cacheWriteTokens: 0,
+      outputTokens: 5,
+      reasoningTokens: 0,
+      totalTokens: 15,
+      imageTokens: 0,
+      toolUnits: 0,
+      priceVersion: arena.priceVersion,
+      actualCostNanoUsd: 100,
+      createdAt: "2026-07-12T12:01:21.000Z",
+    };
+    await repository.recordUsage(state.id, usage, turn.id);
+    await repository.recordVerification(
+      state.id,
+      {
+        passed: true,
+        verifierDigest: "sha256:delete-lineage",
+        publicFeedback: "Pass",
+        verifiedAt: "2026-07-12T12:01:22.000Z",
+      },
+      turn.id,
+    );
+
+    await expect(admin`delete from turn where id = ${turn.id}`).rejects.toMatchObject({
+      code: "23503",
+    });
+    const events = await repository.listEvents(state.id);
+    expect(events[0]?.turnId).toBe(turn.id);
+    expect(verifyEventChain(events)).toBe(true);
+
+    await expect(repository.deleteUser(state.userId)).resolves.toBeUndefined();
+    const counts = await admin<
+      { attempts: number; turns: number; events: number; usages: number; verifications: number }[]
+    >`
+      select
+        (select count(*)::int from attempt where id = ${state.id}) as attempts,
+        (select count(*)::int from turn where attempt_id = ${state.id}) as turns,
+        (select count(*)::int from run_event where attempt_id = ${state.id}) as events,
+        (select count(*)::int from usage_item where attempt_id = ${state.id}) as usages,
+        (select count(*)::int from verification_run where attempt_id = ${state.id}) as verifications
+    `;
+    expect(counts[0]).toEqual({ attempts: 0, turns: 0, events: 0, usages: 0, verifications: 0 });
   });
 
   it("atomically enforces the global reservation cap and settles idempotently", async () => {

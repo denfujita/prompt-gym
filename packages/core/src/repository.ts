@@ -18,6 +18,7 @@ import { PromptGymError } from "./errors.js";
 
 export interface EventInput {
   attemptId: string;
+  turnId?: string;
   actor: RunEventActor;
   type: RunEventType;
   payload: Record<string, JsonValue>;
@@ -92,9 +93,9 @@ export interface PromptGymRepository {
 
   appendEvent(input: EventInput): Promise<RunEvent>;
   listEvents(attemptId: string, afterSequence?: number): Promise<RunEvent[]>;
-  recordUsage(attemptId: string, usage: UsageV1): Promise<UsageRecordResult>;
+  recordUsage(attemptId: string, usage: UsageV1, turnId?: string): Promise<UsageRecordResult>;
   listUsage(attemptId: string): Promise<UsageV1[]>;
-  recordVerification(attemptId: string, result: VerificationResult): Promise<void>;
+  recordVerification(attemptId: string, result: VerificationResult, turnId?: string): Promise<void>;
 
   reserveCost(input: CostReservationInput): Promise<CostReservation>;
   settleCost(reservationId: string, actualNanoUsd: number): Promise<void>;
@@ -110,6 +111,25 @@ export interface PromptGymRepository {
 
 const copy = <T>(value: T): T => structuredClone(value);
 const activeStatuses = new Set(["created", "ready", "running", "awaiting_player"]);
+
+function assertImmutableTurnFields(current: Turn, next: Turn): void {
+  if (
+    next.id !== current.id ||
+    next.attemptId !== current.attemptId ||
+    next.ordinal !== current.ordinal ||
+    next.prompt !== current.prompt ||
+    next.createdAt !== current.createdAt
+  ) {
+    throw new PromptGymError("CONFLICT", "Immutable turn fields were changed", 409);
+  }
+}
+
+function resolveTurnLink(explicitTurnId?: string, embeddedTurnId?: string): string | undefined {
+  if (explicitTurnId && embeddedTurnId && explicitTurnId !== embeddedTurnId) {
+    throw new PromptGymError("CONFLICT", "Conflicting turn lineage was supplied", 409);
+  }
+  return explicitTurnId ?? embeddedTurnId;
+}
 
 export class InMemoryPromptGymRepository implements PromptGymRepository {
   private readonly attempts = new Map<string, AttemptState>();
@@ -185,7 +205,17 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
   async queueTurn(turn: Turn): Promise<QueuedTurnResult> {
     const current = this.attempts.get(turn.attemptId);
     if (!current) throw new PromptGymError("NOT_FOUND", "Attempt not found", 404);
-    if (this.turns.has(turn.id)) throw new PromptGymError("CONFLICT", "Turn already exists", 409);
+    const existing = this.turns.get(turn.id);
+    if (existing) {
+      assertImmutableTurnFields(existing, turn);
+      const queuedEvent = (this.events.get(turn.attemptId) ?? []).find(
+        (event) => event.type === "turn.queued" && event.turnId === turn.id,
+      );
+      if (!queuedEvent) {
+        throw new PromptGymError("CONFLICT", "Turn exists without its queued event", 409);
+      }
+      return { turn: copy(existing), attempt: copy(current), event: copy(queuedEvent) };
+    }
     if (
       !(current.status === "ready" || current.status === "awaiting_player") ||
       [...this.turns.values()].some(
@@ -199,6 +229,7 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
       throw new PromptGymError("PROMPT_LIMIT", "This run has used all six coaching prompts", 409);
     const event = createVisibleRunEvent({
       attemptId: turn.attemptId,
+      turnId: turn.id,
       sequence: current.lastEventSequence + 1,
       actor: "player",
       type: "turn.queued",
@@ -229,8 +260,7 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
     const current = this.turns.get(id);
     if (!current) throw new PromptGymError("NOT_FOUND", "Turn not found", 404);
     const next = update(copy(current));
-    if (next.id !== id || next.attemptId !== current.attemptId)
-      throw new PromptGymError("CONFLICT", "Immutable turn identity was changed", 409);
+    assertImmutableTurnFields(current, next);
     this.turns.set(id, copy(next));
     return copy(next);
   }
@@ -288,8 +318,13 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
   async appendEvent(input: EventInput): Promise<RunEvent> {
     const attempt = this.attempts.get(input.attemptId);
     if (!attempt) throw new PromptGymError("NOT_FOUND", "Attempt not found", 404);
+    if ("turnId" in input.payload && input.payload.turnId !== input.turnId) {
+      throw new PromptGymError("CONFLICT", "Conflicting turn lineage was supplied", 409);
+    }
+    if (input.turnId) this.assertTurnLineage(input.attemptId, input.turnId);
     const event = createVisibleRunEvent({
       attemptId: input.attemptId,
+      ...(input.turnId ? { turnId: input.turnId } : {}),
       sequence: attempt.lastEventSequence + 1,
       actor: input.actor,
       type: input.type,
@@ -312,18 +347,26 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
     return (this.events.get(attemptId) ?? []).filter((event) => event.sequence > afterSequence).map(copy);
   }
 
-  async recordUsage(attemptId: string, usage: UsageV1): Promise<UsageRecordResult> {
+  async recordUsage(attemptId: string, usage: UsageV1, turnId?: string): Promise<UsageRecordResult> {
     const current = this.attempts.get(attemptId);
     if (!current) throw new PromptGymError("NOT_FOUND", "Attempt not found", 404);
+    const linkedTurnId = resolveTurnLink(turnId, usage.turnId);
+    if (linkedTurnId) this.assertTurnLineage(attemptId, linkedTurnId);
     const list = this.usages.get(attemptId) ?? [];
-    if (
-      list.some(
-        (item) => item.provider === usage.provider && item.providerResponseId === usage.providerResponseId,
-      )
-    ) {
+    const existing = list.find(
+      (item) => item.provider === usage.provider && item.providerResponseId === usage.providerResponseId,
+    );
+    if (existing) {
+      if (existing.turnId !== linkedTurnId) {
+        throw new PromptGymError("CONFLICT", "Provider usage has different turn lineage", 409);
+      }
       return { applied: false, attempt: copy(current) };
     }
-    list.push(copy(usage));
+    const storedUsage: UsageV1 = {
+      ...copy(usage),
+      ...(linkedTurnId ? { turnId: linkedTurnId } : {}),
+    };
+    list.push(storedUsage);
     this.usages.set(attemptId, list);
     const attempt = {
       ...current,
@@ -338,10 +381,22 @@ export class InMemoryPromptGymRepository implements PromptGymRepository {
     return (this.usages.get(attemptId) ?? []).map(copy);
   }
 
-  async recordVerification(attemptId: string, result: VerificationResult): Promise<void> {
+  async recordVerification(attemptId: string, result: VerificationResult, turnId?: string): Promise<void> {
+    if (!this.attempts.has(attemptId)) throw new PromptGymError("NOT_FOUND", "Attempt not found", 404);
     const list = this.verifications.get(attemptId) ?? [];
-    list.push(copy(result));
+    const linkedTurnId = resolveTurnLink(turnId, result.turnId);
+    if (linkedTurnId) this.assertTurnLineage(attemptId, linkedTurnId);
+    list.push({
+      ...copy(result),
+      ...(linkedTurnId ? { turnId: linkedTurnId } : {}),
+    });
     this.verifications.set(attemptId, list);
+  }
+
+  private assertTurnLineage(attemptId: string, turnId: string): void {
+    if (this.turns.get(turnId)?.attemptId !== attemptId) {
+      throw new PromptGymError("CONFLICT", "Turn does not belong to this attempt", 409);
+    }
   }
 
   async reserveCost(input: CostReservationInput): Promise<CostReservation> {

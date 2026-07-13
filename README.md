@@ -8,9 +8,9 @@ This public repository contains the product UI, orchestration API, scoring and a
 
 ## What ships in the MVP
 
-- **Signal Vault** — infer hidden visual rules and unlock three chambers.
-- **Clone the Gremlin** — reproduce a black-box command-line tool against private behavioral tests.
-- **Rigged Race** — investigate synthetic race telemetry and submit an exact evidence-backed answer.
+- **Crack the Signal Vault** — infer hidden visual rules and unlock three chambers.
+- **Copy the Gremlin** — reproduce a black-box command-line tool against private behavioral tests.
+- **Who Rigged the Race?** — investigate synthetic race telemetry and submit an exact evidence-backed answer.
 - Prompt-only coaching, live event playback, exact token accounting, per-instance leaderboards, delayed opt-in replays, and separate commercial-data consent.
 - A scripted local provider and in-memory persistence so the full experience runs without cloud credentials.
 - A real OpenAI Responses API adapter for `gpt-5.6-terra` when `OPENAI_API_KEY` is configured.
@@ -44,7 +44,7 @@ npm test
 npm run build
 ```
 
-See [the architecture](docs/architecture.md), [product contract](docs/product-spec.md), [pricing and subsidy policy](docs/pricing-and-subsidy.md), [data governance](docs/data-governance.md), [security model](docs/security.md), [deployment runbook](docs/deployment.md), and [research basis](docs/research-basis.md).
+See [the architecture](docs/architecture.md), [Puzzle and Build gameplay](docs/gameplay-v2.md), [prompt storage](docs/prompt-storage.md), [product contract](docs/product-spec.md), [pricing and subsidy policy](docs/pricing-and-subsidy.md), [data governance](docs/data-governance.md), [security model](docs/security.md), [deployment runbook](docs/deployment.md), and [research basis](docs/research-basis.md).
 
 ## License
 

@@ -123,6 +123,32 @@ describe("Prompt Gym run engine", () => {
     });
   });
 
+  it("keeps consented replays owner-only until the redaction pipeline is available", async () => {
+    const repository = new InMemoryPromptGymRepository();
+    const service = new PromptGymService(
+      repository,
+      new LocalDemoChallengeService(),
+      createDefaultArena(fixedClock.now()),
+      new RunEventHub(),
+      "assign",
+      "handle",
+      fixedClock,
+    );
+    const attempt = await service.createAttempt({ id: "replay-owner" }, "signal-vault", false);
+    await service.saveConsent("replay-owner", {
+      research: false,
+      publicReplay: true,
+      version: "2026-07-12.v1",
+    });
+
+    await expect(service.replay("other-player", attempt.id)).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    await expect(service.replay("replay-owner", attempt.id)).resolves.toMatchObject({
+      attempt: { id: attempt.id },
+    });
+  });
+
   it("expires an abandoned run before checking the one-active-attempt guard", async () => {
     const repository = new InMemoryPromptGymRepository();
     const service = new PromptGymService(

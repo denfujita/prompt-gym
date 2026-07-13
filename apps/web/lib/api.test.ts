@@ -1,6 +1,31 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeEvent } from "./api";
+import { normalizeChallenge, normalizeEvent } from "./api";
+
+const manifest = {
+  slug: "signal-vault",
+  title: "Crack the Signal Vault",
+  shortDescription: "Open it.",
+  playerBrief: "Three chambers.",
+  winCondition: "Open all three chambers.",
+  brief: "Complete model brief.",
+  kind: "visual" as const,
+  playMode: "puzzle" as const,
+  difficulty: "hard" as const,
+  estimatedMinutes: 8,
+  actionBudgetLabel: "24 control actions",
+  maxToolActionsPerTurn: 8,
+};
+
+describe("live challenge normalization", () => {
+  it("uses explicit player budgets and rejects unsupported challenge slugs", () => {
+    expect(normalizeChallenge(manifest)).toMatchObject({
+      slug: "signal-vault",
+      actionBudgetLabel: "24 control actions",
+    });
+    expect(normalizeChallenge({ ...manifest, slug: "future-unknown-task" })).toBeUndefined();
+  });
+});
 
 describe("live event normalization", () => {
   it("preserves authoritative task.state payloads for the task viewport", () => {

@@ -5,6 +5,7 @@ export type ChallengeAccent = "volt" | "coral" | "sky";
 export interface Challenge {
   id: string;
   slug: ChallengeSlug;
+  playMode: "puzzle" | "build";
   name: string;
   category: string;
   brief: string;
@@ -18,6 +19,7 @@ export interface Challenge {
   energyCost: number;
   timeLimitMinutes: number;
   actionLimit: number;
+  actionBudgetLabel: string;
 }
 
 export type AttemptStatus = "ready" | "running" | "thinking" | "solved" | "failed" | "cancelled";
@@ -98,6 +100,7 @@ export interface UsageBreakdown {
 export interface AttemptResult {
   attemptId: string;
   challengeSlug: ChallengeSlug;
+  ranked: boolean;
   solved: boolean;
   tokens: number;
   cheapestTokens?: number;

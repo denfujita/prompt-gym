@@ -36,6 +36,19 @@ interface StoredLeaderboardEntry extends Omit<LeaderboardEntry, "rank"> {
   instanceId: string;
 }
 
+interface RunEventRow {
+  id: string;
+  attempt_id: string;
+  turn_id: string | null;
+  sequence: number;
+  actor: RunEvent["actor"];
+  event_type: RunEvent["type"];
+  public_payload: Record<string, JsonValue>;
+  created_at: Date | string;
+  previous_hash: string;
+  hash: string;
+}
+
 export interface PostgresPromptGymRepositoryOptions {
   databaseUrl: string;
   arena: ArenaConfig;
@@ -63,6 +76,40 @@ function deterministicSeedSlot(seedCommitment: string): number {
 
 function iso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function mapRunEvent(row: RunEventRow): RunEvent {
+  return {
+    id: row.id,
+    attemptId: row.attempt_id,
+    ...(row.turn_id ? { turnId: row.turn_id } : {}),
+    sequence: row.sequence,
+    actor: row.actor,
+    type: row.event_type,
+    payload: clone(row.public_payload),
+    createdAt: iso(row.created_at),
+    previousHash: row.previous_hash,
+    hash: row.hash,
+  };
+}
+
+function assertImmutableTurnFields(current: Turn, next: Turn): void {
+  if (
+    next.id !== current.id ||
+    next.attemptId !== current.attemptId ||
+    next.ordinal !== current.ordinal ||
+    next.prompt !== current.prompt ||
+    next.createdAt !== current.createdAt
+  ) {
+    throw new PromptGymError("CONFLICT", "Immutable turn fields were changed", 409);
+  }
+}
+
+function resolveTurnLink(explicitTurnId?: string, embeddedTurnId?: string): string | undefined {
+  if (explicitTurnId && embeddedTurnId && explicitTurnId !== embeddedTurnId) {
+    throw new PromptGymError("CONFLICT", "Conflicting turn lineage was supplied", 409);
+  }
+  return explicitTurnId ?? embeddedTurnId;
 }
 
 function isSafeMoney(value: number, allowZero: boolean): boolean {
@@ -378,6 +425,21 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
     return rows[0] ? asEnvelope(rows[0].envelope) : undefined;
   }
 
+  private async assertTurnLineage(
+    tx: postgres.TransactionSql,
+    attemptId: string,
+    turnId: string,
+  ): Promise<void> {
+    const rows = await tx<{ present: boolean }[]>`
+      select exists(
+        select 1 from turn where id = ${turnId} and attempt_id = ${attemptId}
+      ) as present
+    `;
+    if (!rows[0]?.present) {
+      throw new PromptGymError("CONFLICT", "Turn does not belong to this attempt", 409);
+    }
+  }
+
   async createTurn(turn: Turn): Promise<void> {
     await this.ready;
     try {
@@ -404,6 +466,24 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
         const row = rows[0];
         if (!row) throw new PromptGymError("NOT_FOUND", "Attempt not found", 404);
         const current = asAttempt(row.state);
+        const existingRows = await tx<{ state: unknown }[]>`
+          select state from turn where id = ${turn.id} for update
+        `;
+        if (existingRows[0]) {
+          const existing = asTurn(existingRows[0].state);
+          assertImmutableTurnFields(existing, turn);
+          const eventRows = await tx<RunEventRow[]>`
+            select id, attempt_id, turn_id, sequence, actor, event_type, public_payload,
+              created_at, previous_hash, hash
+            from run_event
+            where attempt_id = ${turn.attemptId} and turn_id = ${turn.id} and event_type = 'turn.queued'
+            order by sequence asc limit 1
+          `;
+          if (!eventRows[0]) {
+            throw new PromptGymError("CONFLICT", "Turn exists without its queued event", 409);
+          }
+          return { turn: existing, attempt: current, event: mapRunEvent(eventRows[0]) };
+        }
         const activeTurns = await tx<{ present: boolean }[]>`
           select exists(
             select 1 from turn where attempt_id = ${turn.attemptId} and status in ('queued', 'running')
@@ -420,6 +500,7 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
         }
         const event = createVisibleRunEvent({
           attemptId: turn.attemptId,
+          turnId: turn.id,
           sequence: row.last_event_sequence + 1,
           actor: "player",
           type: "turn.queued",
@@ -443,9 +524,9 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
         `;
         await tx`
           insert into run_event
-            (id, attempt_id, sequence, actor, event_type, public_payload, previous_hash, hash, created_at)
+            (id, attempt_id, turn_id, sequence, actor, event_type, public_payload, previous_hash, hash, created_at)
           values (
-            ${event.id}, ${event.attemptId}, ${event.sequence}, ${event.actor}, ${event.type},
+            ${event.id}, ${event.attemptId}, ${turn.id}, ${event.sequence}, ${event.actor}, ${event.type},
             ${jsonText(event.payload)}::jsonb, ${event.previousHash}, ${event.hash}, ${event.createdAt}
           )
         `;
@@ -477,12 +558,9 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
         if (!row) throw new PromptGymError("NOT_FOUND", "Turn not found", 404);
         const current = asTurn(row.state);
         const next = clone(update(clone(current)));
-        if (next.id !== id || next.attemptId !== current.attemptId) {
-          throw new PromptGymError("CONFLICT", "Immutable turn identity was changed", 409);
-        }
+        assertImmutableTurnFields(current, next);
         await tx`
-          update turn set ordinal = ${next.ordinal}, prompt = ${next.prompt}, status = ${next.status},
-            failure_code = ${next.failureCode ?? null}, created_at = ${next.createdAt},
+          update turn set status = ${next.status}, failure_code = ${next.failureCode ?? null},
             started_at = ${next.startedAt ?? null}, completed_at = ${next.completedAt ?? null},
             state = ${jsonText(next)}::jsonb
           where id = ${id}
@@ -588,8 +666,13 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
         `;
         const row = rows[0];
         if (!row) throw new PromptGymError("NOT_FOUND", "Attempt not found", 404);
+        if ("turnId" in input.payload && input.payload.turnId !== input.turnId) {
+          throw new PromptGymError("CONFLICT", "Conflicting turn lineage was supplied", 409);
+        }
+        if (input.turnId) await this.assertTurnLineage(tx, input.attemptId, input.turnId);
         const event = createVisibleRunEvent({
           attemptId: input.attemptId,
+          ...(input.turnId ? { turnId: input.turnId } : {}),
           sequence: row.last_event_sequence + 1,
           actor: input.actor,
           type: input.type,
@@ -601,9 +684,9 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
         const next = { ...attempt, lastEventSequence: event.sequence, lastEventHash: event.hash };
         await tx`
           insert into run_event
-            (id, attempt_id, sequence, actor, event_type, public_payload, previous_hash, hash, created_at)
+            (id, attempt_id, turn_id, sequence, actor, event_type, public_payload, previous_hash, hash, created_at)
           values (
-            ${event.id}, ${event.attemptId}, ${event.sequence}, ${event.actor}, ${event.type},
+            ${event.id}, ${event.attemptId}, ${input.turnId ?? null}, ${event.sequence}, ${event.actor}, ${event.type},
             ${jsonText(event.payload)}::jsonb, ${event.previousHash}, ${event.hash}, ${event.createdAt}
           )
         `;
@@ -621,37 +704,15 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
 
   async listEvents(attemptId: string, afterSequence = 0): Promise<RunEvent[]> {
     await this.ready;
-    const rows = await this.client<
-      {
-        id: string;
-        attempt_id: string;
-        sequence: number;
-        actor: RunEvent["actor"];
-        event_type: RunEvent["type"];
-        public_payload: Record<string, JsonValue>;
-        created_at: Date | string;
-        previous_hash: string;
-        hash: string;
-      }[]
-    >`
-      select id, attempt_id, sequence, actor, event_type, public_payload, created_at, previous_hash, hash
+    const rows = await this.client<RunEventRow[]>`
+      select id, attempt_id, turn_id, sequence, actor, event_type, public_payload, created_at, previous_hash, hash
       from run_event where attempt_id = ${attemptId} and sequence > ${afterSequence}
       order by sequence asc
     `;
-    return rows.map((row) => ({
-      id: row.id,
-      attemptId: row.attempt_id,
-      sequence: row.sequence,
-      actor: row.actor,
-      type: row.event_type,
-      payload: clone(row.public_payload),
-      createdAt: iso(row.created_at),
-      previousHash: row.previous_hash,
-      hash: row.hash,
-    }));
+    return rows.map(mapRunEvent);
   }
 
-  async recordUsage(attemptId: string, usage: UsageV1): Promise<UsageRecordResult> {
+  async recordUsage(attemptId: string, usage: UsageV1, turnId?: string): Promise<UsageRecordResult> {
     await this.ready;
     try {
       return await this.client.begin(async (tx) => {
@@ -661,13 +722,15 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
         const row = attemptRows[0];
         if (!row) throw new PromptGymError("NOT_FOUND", "Attempt not found", 404);
         const current = asAttempt(row.state);
+        const linkedTurnId = resolveTurnLink(turnId, usage.turnId);
+        if (linkedTurnId) await this.assertTurnLineage(tx, attemptId, linkedTurnId);
         const inserted = await tx<{ provider_response_id: string }[]>`
           insert into usage_item (
-            attempt_id, provider, provider_response_id, resolved_model, input_tokens,
+            attempt_id, turn_id, provider, provider_response_id, resolved_model, input_tokens,
             cached_input_tokens, cache_write_tokens, output_tokens, reasoning_tokens,
             total_tokens, image_tokens, tool_units, price_version, actual_cost_nano_usd, created_at
           ) values (
-            ${attemptId}, ${usage.provider}, ${usage.providerResponseId}, ${usage.resolvedModel},
+            ${attemptId}, ${linkedTurnId ?? null}, ${usage.provider}, ${usage.providerResponseId}, ${usage.resolvedModel},
             ${usage.inputTokens}, ${usage.cachedInputTokens}, ${usage.cacheWriteTokens},
             ${usage.outputTokens}, ${usage.reasoningTokens}, ${usage.totalTokens},
             ${usage.imageTokens}, ${usage.toolUnits}, ${usage.priceVersion},
@@ -676,13 +739,16 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
           returning provider_response_id
         `;
         if (inserted.length === 0) {
-          const existing = await tx<{ attempt_id: string }[]>`
-            select attempt_id from usage_item
+          const existing = await tx<{ attempt_id: string; turn_id: string | null }[]>`
+            select attempt_id, turn_id from usage_item
             where provider = ${usage.provider} and provider_response_id = ${usage.providerResponseId}
             limit 1
           `;
           if (existing[0]?.attempt_id !== attemptId) {
             throw new PromptGymError("CONFLICT", "Provider usage belongs to another attempt", 409);
+          }
+          if ((existing[0]?.turn_id ?? undefined) !== linkedTurnId) {
+            throw new PromptGymError("CONFLICT", "Provider usage has different turn lineage", 409);
           }
           return { applied: false, attempt: current };
         }
@@ -709,6 +775,7 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
     const rows = await this.client<
       {
         provider: UsageV1["provider"];
+        turn_id: string | null;
         provider_response_id: string;
         resolved_model: string;
         input_tokens: number;
@@ -724,13 +791,14 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
         created_at: Date | string;
       }[]
     >`
-      select provider, provider_response_id, resolved_model, input_tokens, cached_input_tokens,
+      select turn_id, provider, provider_response_id, resolved_model, input_tokens, cached_input_tokens,
         cache_write_tokens, output_tokens, reasoning_tokens, total_tokens, image_tokens,
         tool_units, price_version, actual_cost_nano_usd, created_at
       from usage_item where attempt_id = ${attemptId} order by created_at asc, id asc
     `;
     return rows.map((row) => ({
       schemaVersion: "usage.v1",
+      ...(row.turn_id ? { turnId: row.turn_id } : {}),
       provider: row.provider,
       providerResponseId: row.provider_response_id,
       resolvedModel: row.resolved_model,
@@ -748,17 +816,21 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
     }));
   }
 
-  async recordVerification(attemptId: string, result: VerificationResult): Promise<void> {
+  async recordVerification(attemptId: string, result: VerificationResult, turnId?: string): Promise<void> {
     await this.ready;
     try {
-      await this.client`
-        insert into verification_run
-          (attempt_id, passed, verifier_digest, public_feedback, private_result_ref, verified_at)
-        values (
-          ${attemptId}, ${result.passed}, ${result.verifierDigest}, ${result.publicFeedback},
-          ${result.privateResultRef ?? null}, ${result.verifiedAt}
-        )
-      `;
+      await this.client.begin(async (tx) => {
+        const linkedTurnId = resolveTurnLink(turnId, result.turnId);
+        if (linkedTurnId) await this.assertTurnLineage(tx, attemptId, linkedTurnId);
+        await tx`
+          insert into verification_run
+            (attempt_id, turn_id, passed, verifier_digest, public_feedback, private_result_ref, verified_at)
+          values (
+            ${attemptId}, ${linkedTurnId ?? null}, ${result.passed}, ${result.verifierDigest}, ${result.publicFeedback},
+            ${result.privateResultRef ?? null}, ${result.verifiedAt}
+          )
+        `;
+      });
     } catch (error) {
       mapDatabaseError(error);
     }
@@ -1081,6 +1153,11 @@ export class PostgresPromptGymRepository implements PromptGymRepository {
           update dataset_release_episode set deletion_state = 'deleted'
           where attempt_id = any(${tx.array(ids)}::uuid[])
         `;
+        // Turn lineage uses NO ACTION so an isolated turn deletion cannot rewrite
+        // a hash-attested turn id. Account deletion removes the linked rows first.
+        await tx`delete from verification_run where attempt_id = any(${tx.array(ids)}::uuid[])`;
+        await tx`delete from usage_item where attempt_id = any(${tx.array(ids)}::uuid[])`;
+        await tx`delete from run_event where attempt_id = any(${tx.array(ids)}::uuid[])`;
       }
       await tx`delete from credit_ledger where user_id = ${userId}`;
       await tx`delete from cost_reservation where user_id = ${userId}`;

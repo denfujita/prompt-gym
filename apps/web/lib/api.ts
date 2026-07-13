@@ -37,10 +37,14 @@ type WireChallenge = {
   slug: string;
   title: string;
   shortDescription: string;
+  playerBrief?: string;
+  winCondition?: string;
   brief: string;
   kind: "visual" | "artifact" | "data";
+  playMode?: "puzzle" | "build";
   difficulty: "hard" | "expert";
   estimatedMinutes: number;
+  actionBudgetLabel?: string;
   maxToolActionsPerTurn: number;
 };
 
@@ -71,25 +75,27 @@ function isChallengeSlug(value: string): value is ChallengeSlug {
   return value === "signal-vault" || value === "clone-the-gremlin" || value === "rigged-race";
 }
 
-function normalizeChallenge(manifest: WireChallenge): Challenge {
-  const slug = isChallengeSlug(manifest.slug) ? manifest.slug : "signal-vault";
+export function normalizeChallenge(manifest: WireChallenge): Challenge | undefined {
+  if (!isChallengeSlug(manifest.slug)) return undefined;
+  const slug = manifest.slug;
   const fallback = getChallenge(slug);
   return {
     ...fallback,
     id: `${manifest.slug}:live`,
     slug,
+    playMode: manifest.playMode ?? (manifest.kind === "artifact" ? "build" : "puzzle"),
     name: manifest.title,
     category:
       manifest.kind === "visual"
-        ? "Hidden-rule control room"
+        ? "Hidden-rule mystery"
         : manifest.kind === "artifact"
-          ? "Black-box code mystery"
-          : "Data forensics",
-    brief: manifest.shortDescription || fallback.brief,
-    objective: manifest.brief || fallback.objective,
+          ? "Behavior-copy build"
+          : "Evidence mystery",
+    brief: manifest.playerBrief || manifest.shortDescription || fallback.brief,
+    objective: manifest.winCondition || fallback.objective,
     difficulty: manifest.difficulty === "expert" ? "Very hard" : "Hard",
     timeLimitMinutes: manifest.estimatedMinutes,
-    actionLimit: manifest.maxToolActionsPerTurn * 3,
+    actionBudgetLabel: manifest.actionBudgetLabel || fallback.actionBudgetLabel,
     // The manifest endpoint does not currently expose exact-instance board data.
     // Never carry illustrative demo scores into a live challenge card.
     cheapestTokens: null,
@@ -224,7 +230,9 @@ export async function listChallenges(): Promise<Challenge[]> {
   try {
     const payload = await request<{ challenges?: WireChallenge[] } | WireChallenge[]>("/v1/challenges");
     const manifests = Array.isArray(payload) ? payload : (payload.challenges ?? []);
-    return manifests.map(normalizeChallenge);
+    return manifests
+      .map(normalizeChallenge)
+      .filter((challenge): challenge is Challenge => Boolean(challenge));
   } catch {
     return [];
   }
@@ -438,6 +446,7 @@ export async function getResult(id: string): Promise<AttemptResult> {
     return {
       attemptId: id,
       challengeSlug: attempt.challengeSlug,
+      ranked: attempt.mode === "ranked",
       solved: attempt.status === "solved",
       tokens: attempt.competitionTokens,
       cheapestTokens: payload.leaderboard[0]?.competitionTokens,

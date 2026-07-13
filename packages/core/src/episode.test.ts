@@ -4,9 +4,12 @@ import { buildEpisodeJsonlRelease, buildEpisodeV1 } from "./episode.js";
 import { createDefaultArena } from "./orchestrator.js";
 import { GENESIS_EVENT_HASH, createVisibleRunEvent } from "./crypto.js";
 
+const TURN_ID = "00000000-0000-4000-8000-000000000002";
+
 const input = (): EpisodeBuildInput => {
   const event = createVisibleRunEvent({
     attemptId: "00000000-0000-4000-8000-000000000001",
+    turnId: TURN_ID,
     sequence: 1,
     actor: "player",
     type: "turn.queued",
@@ -55,11 +58,15 @@ const input = (): EpisodeBuildInput => {
       version: "1.0.0",
       title: "Signal Vault",
       shortDescription: "",
+      playerBrief: "",
+      winCondition: "Open every chamber.",
       brief: "",
       kind: "visual",
+      playMode: "puzzle",
       accent: { name: "cyan", hex: "#00FFFF", symbol: "o" },
       difficulty: "hard",
       estimatedMinutes: 8,
+      actionBudgetLabel: "24 control actions",
       maxPrompts: 6,
       maxToolActionsPerTurn: 8,
       maxCompetitionTokens: 20_000,
@@ -70,6 +77,7 @@ const input = (): EpisodeBuildInput => {
     events: [event],
     usage: [],
     verification: {
+      turnId: event.turnId,
       passed: true,
       verifierDigest: "verify",
       publicFeedback: "pass",
@@ -97,6 +105,8 @@ describe("EpisodeV1 export", () => {
     expect(serialized).not.toContain("coach@example.com");
     expect(serialized).not.toContain("never-export");
     expect(serialized).not.toContain("user-private");
+    expect(episode.events[0]?.turnId).toBe(TURN_ID);
+    expect(episode.outcome.turnId).toBe(TURN_ID);
     expect(episode.qualityFlags).toContain("pii_or_secret_redacted");
     expect(() => buildEpisodeV1({ ...input(), consent: { ...input().consent, research: false } })).toThrow(
       /not permitted/,

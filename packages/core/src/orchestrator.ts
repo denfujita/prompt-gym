@@ -300,6 +300,7 @@ export class PromptGymService {
     }));
     await this.events.append({
       attemptId: turn.attemptId,
+      turnId: turn.id,
       actor: "system",
       type: "turn.failed",
       payload: {
@@ -439,9 +440,9 @@ export class PromptGymService {
     const attempt = await this.requireAttempt(attemptId);
     const owner = requesterId === attempt.userId;
     if (!owner) {
-      const consent = await this.repository.getConsent(attempt.userId);
-      if (!consent?.publicReplay || this.clock.now() < new Date(this.arena.endsAt))
-        throw new PromptGymError("NOT_FOUND", "Replay not found", 404);
+      // Public replay publication stays closed until a post-season pipeline
+      // scans and redacts prompt/event payloads. Consent alone is not a sanitizer.
+      throw new PromptGymError("NOT_FOUND", "Replay not found", 404);
     }
     const challenge = await this.getChallenge(attempt.challengeSlug);
     const events = await this.repository.listEvents(attemptId);
@@ -523,6 +524,7 @@ export class RunEngine {
         );
         await this.service.events.append({
           attemptId,
+          turnId: persisted.id,
           actor: "model",
           type: "model.thinking",
           payload: { active: false, label: "Stopped" },
@@ -530,6 +532,7 @@ export class RunEngine {
       }
       await this.service.events.append({
         attemptId,
+        turnId: persisted.id,
         actor: "system",
         type: "turn.cancelled",
         payload: {
@@ -549,12 +552,14 @@ export class RunEngine {
     );
     await this.service.events.append({
       attemptId,
+      turnId: target.turnId,
       actor: "model",
       type: "model.thinking",
       payload: { active: false, label: "Stopped" },
     });
     await this.service.events.append({
       attemptId,
+      turnId: target.turnId,
       actor: "system",
       type: "turn.cancelled",
       payload: {
@@ -575,12 +580,14 @@ export class RunEngine {
       if (recovery.recovered) {
         await this.service.events.append({
           attemptId: attempt.id,
+          turnId,
           actor: "model",
           type: "model.thinking",
           payload: { active: false, label: "Stopped" },
         });
         await this.service.events.append({
           attemptId: attempt.id,
+          turnId,
           actor: "system",
           type: "turn.failed",
           payload: {
@@ -593,6 +600,7 @@ export class RunEngine {
         });
         await this.service.events.append({
           attemptId: attempt.id,
+          turnId,
           actor: "system",
           type: "attempt.failed",
           payload: {
@@ -617,12 +625,14 @@ export class RunEngine {
     );
     await this.service.events.append({
       attemptId: attempt.id,
+      turnId,
       actor: "system",
       type: "turn.started",
       payload: { turnId, ordinal: turn.ordinal },
     });
     await this.service.events.append({
       attemptId: attempt.id,
+      turnId,
       actor: "model",
       type: "model.thinking",
       payload: { active: true, label: "Thinking…" },
@@ -698,7 +708,7 @@ export class RunEngine {
           }
           throw error;
         }
-        const usageRecord = await this.recordUsage(attempt.id, response.usage);
+        const usageRecord = await this.recordUsage(turnId, attempt.id, response.usage);
         if (attempt.ranked && response.resolvedModel !== this.service.arena.resolvedModel) {
           throw new PromptGymError(
             "PROVIDER_ERROR",
@@ -718,6 +728,7 @@ export class RunEngine {
           }));
           await this.service.events.append({
             attemptId: attempt.id,
+            turnId,
             actor: "system",
             type: "turn.cancelled",
             payload: { turnId, message: "The run closed while the model call was finishing" },
@@ -727,6 +738,7 @@ export class RunEngine {
         if (response.visibleText.trim())
           await this.service.events.append({
             attemptId: attempt.id,
+            turnId,
             actor: "model",
             type: "model.message",
             payload: { text: response.visibleText.trim() },
@@ -743,6 +755,7 @@ export class RunEngine {
             const visibleOutput = { ok: false, message: "That tool is not available in this challenge." };
             await this.service.events.append({
               attemptId: attempt.id,
+              turnId,
               actor: "tool",
               type: "tool.completed",
               payload: { tool: toolCall.name, ...visibleOutput },
@@ -752,6 +765,7 @@ export class RunEngine {
           }
           await this.service.events.append({
             attemptId: attempt.id,
+            turnId,
             actor: "tool",
             type: "tool.started",
             payload: { tool: toolCall.name, arguments: toolCall.arguments },
@@ -777,6 +791,7 @@ export class RunEngine {
             }));
           await this.service.events.append({
             attemptId: attempt.id,
+            turnId,
             actor: "tool",
             type: "tool.completed",
             payload: safeOutput,
@@ -784,6 +799,7 @@ export class RunEngine {
           if (result.publicState)
             await this.service.events.append({
               attemptId: attempt.id,
+              turnId,
               actor: "system",
               type: "task.state",
               payload: result.publicState,
@@ -794,9 +810,10 @@ export class RunEngine {
             toolActionsUsed: current.toolActionsUsed + 1,
           }));
           if (result.verification) {
-            await this.service.repository.recordVerification(attempt.id, result.verification);
+            await this.service.repository.recordVerification(attempt.id, result.verification, turnId);
             await this.service.events.append({
               attemptId: attempt.id,
+              turnId,
               actor: "verifier",
               type: "verification.completed",
               payload: {
@@ -884,12 +901,14 @@ export class RunEngine {
     if (attempt.status === "running")
       await this.service.events.append({
         attemptId: attempt.id,
+        turnId,
         actor: "model",
         type: "model.thinking",
         payload: { active: false, label: "Expired" },
       });
     await this.service.events.append({
       attemptId: attempt.id,
+      turnId,
       actor: "system",
       type: "turn.failed",
       payload: {
@@ -901,6 +920,7 @@ export class RunEngine {
     });
     await this.service.events.append({
       attemptId: attempt.id,
+      turnId,
       actor: "system",
       type: "attempt.failed",
       payload: { reason: "expired", message: "The ten-minute run window expired" },
@@ -908,12 +928,13 @@ export class RunEngine {
     return true;
   }
 
-  private async recordUsage(attemptId: string, usage: UsageV1) {
-    const recorded = await this.service.repository.recordUsage(attemptId, usage);
+  private async recordUsage(turnId: string, attemptId: string, usage: UsageV1) {
+    const recorded = await this.service.repository.recordUsage(attemptId, usage, turnId);
     const attempt = recorded.attempt;
     if (recorded.applied) {
       await this.service.events.append({
         attemptId,
+        turnId,
         actor: "system",
         type: "usage.recorded",
         payload: {
@@ -939,6 +960,7 @@ export class RunEngine {
     const now = this.clock.now();
     await this.service.events.append({
       attemptId,
+      turnId,
       actor: "model",
       type: "model.thinking",
       payload: { active: false, label: "Ready" },
@@ -966,12 +988,14 @@ export class RunEngine {
         });
       await this.service.events.append({
         attemptId,
+        turnId,
         actor: "system",
         type: "turn.completed",
         payload: { turnId, solved },
       });
       await this.service.events.append({
         attemptId,
+        turnId,
         actor: "system",
         type: "attempt.completed",
         payload: {
@@ -989,12 +1013,14 @@ export class RunEngine {
       );
       await this.service.events.append({
         attemptId,
+        turnId,
         actor: "system",
         type: "turn.completed",
         payload: { turnId, solved },
       });
       await this.service.events.append({
         attemptId,
+        turnId,
         actor: "system",
         type: "attempt.failed",
         payload: { reason: "prompt_limit", message: "No coaching prompts remain" },
@@ -1005,6 +1031,7 @@ export class RunEngine {
       );
       await this.service.events.append({
         attemptId,
+        turnId,
         actor: "system",
         type: "turn.completed",
         payload: { turnId, solved },
@@ -1020,6 +1047,7 @@ export class RunEngine {
         : new PromptGymError("PROVIDER_ERROR", "The run could not continue", 502);
     await this.service.events.append({
       attemptId,
+      turnId,
       actor: "model",
       type: "model.thinking",
       payload: { active: false, label: "Stopped" },
@@ -1041,6 +1069,7 @@ export class RunEngine {
       );
       await this.service.events.append({
         attemptId,
+        turnId,
         actor: "system",
         type: "turn.failed",
         payload: {
@@ -1051,6 +1080,7 @@ export class RunEngine {
       });
       await this.service.events.append({
         attemptId,
+        turnId,
         actor: "system",
         type: terminal === "budget_exhausted" ? "attempt.budget_exhausted" : "attempt.failed",
         payload: { code: promptGymError.code, message: promptGymError.publicMessage },
@@ -1058,6 +1088,7 @@ export class RunEngine {
     } else {
       await this.service.events.append({
         attemptId,
+        turnId,
         actor: "system",
         type: "turn.failed",
         payload: {

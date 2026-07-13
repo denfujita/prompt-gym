@@ -113,8 +113,41 @@ describe("InMemoryPromptGymRepository", () => {
     const queued = await repository.queueTurn(turn);
     expect(queued.attempt.promptsUsed).toBe(1);
     expect(queued.event.type).toBe("turn.queued");
+    expect(queued.event.turnId).toBe(turn.id);
+    const retried = await repository.queueTurn(turn);
+    expect(retried.event.id).toBe(queued.event.id);
+    expect(retried.attempt.promptsUsed).toBe(1);
+    expect(await repository.listTurns("a1")).toHaveLength(1);
+    expect(await repository.listEvents("a1")).toHaveLength(1);
+    await expect(repository.queueTurn({ ...turn, prompt: "Changed prompt" })).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
     await expect(repository.queueTurn({ ...turn, id: "t2", ordinal: 2 })).rejects.toMatchObject({
       code: "RUN_ACTIVE",
+    });
+
+    for (const mutation of [
+      { id: "changed" },
+      { attemptId: "a2" },
+      { ordinal: 2 },
+      { prompt: "Changed prompt" },
+      { createdAt: "2026-07-12T00:00:09.000Z" },
+    ]) {
+      await expect(
+        repository.updateTurn(turn.id, (current) => ({ ...current, ...mutation })),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+    }
+    await expect(
+      repository.updateTurn(turn.id, (current) => ({
+        ...current,
+        status: "running",
+        startedAt: "2026-07-12T00:00:03.000Z",
+      })),
+    ).resolves.toMatchObject({ status: "running" });
+    expect(await repository.getTurn(turn.id)).toMatchObject({
+      prompt: turn.prompt,
+      ordinal: turn.ordinal,
+      createdAt: turn.createdAt,
     });
 
     const usage: UsageV1 = {
@@ -134,11 +167,90 @@ describe("InMemoryPromptGymRepository", () => {
       actualCostNanoUsd: 1_000,
       createdAt: "2026-07-12T00:00:02.000Z",
     };
-    expect((await repository.recordUsage("a1", usage)).applied).toBe(true);
-    expect((await repository.recordUsage("a1", usage)).applied).toBe(false);
+    expect((await repository.recordUsage("a1", usage, turn.id)).applied).toBe(true);
+    expect((await repository.recordUsage("a1", usage, turn.id)).applied).toBe(false);
+    await repository.createTurn({ ...turn, id: "t2", ordinal: 2 });
+    await expect(repository.recordUsage("a1", usage, "t2")).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    expect(await repository.listUsage("a1")).toEqual([{ ...usage, turnId: turn.id }]);
     expect(await repository.getAttempt("a1")).toMatchObject({
       competitionTokens: 125,
       actualCostNanoUsd: 1_000,
+    });
+  });
+
+  it("rejects cross-attempt turn lineage without side effects", async () => {
+    const repository = new InMemoryPromptGymRepository();
+    const first = attempt();
+    const second: AttemptState = {
+      ...attempt(),
+      id: "a2",
+      userId: "u2",
+      publicHandle: "KeenOtter2",
+      instance: { ...attempt().instance, id: "i2" },
+    };
+    await repository.createAttempt(first, envelope);
+    await repository.createAttempt(second, { ...envelope, instance: second.instance });
+    const foreignTurn: Turn = {
+      id: "foreign-turn",
+      attemptId: second.id,
+      ordinal: 1,
+      prompt: "Inspect the other attempt.",
+      status: "queued",
+      createdAt: "2026-07-12T00:00:01.000Z",
+    };
+    await repository.queueTurn(foreignTurn);
+    const usage: UsageV1 = {
+      schemaVersion: "usage.v1",
+      provider: "openai",
+      providerResponseId: "resp-foreign",
+      resolvedModel: "gpt-5.6-terra",
+      inputTokens: 10,
+      cachedInputTokens: 0,
+      cacheWriteTokens: 0,
+      outputTokens: 5,
+      reasoningTokens: 0,
+      totalTokens: 15,
+      imageTokens: 0,
+      toolUnits: 0,
+      priceVersion: "test",
+      actualCostNanoUsd: 100,
+      createdAt: "2026-07-12T00:00:02.000Z",
+    };
+
+    await expect(
+      repository.appendEvent({
+        attemptId: first.id,
+        turnId: foreignTurn.id,
+        actor: "model",
+        type: "model.message",
+        payload: { text: "wrong attempt" },
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(repository.recordUsage(first.id, usage, foreignTurn.id)).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    await expect(
+      repository.recordVerification(
+        first.id,
+        {
+          passed: false,
+          verifierDigest: "sha256:test",
+          publicFeedback: "No",
+          verifiedAt: "2026-07-12T00:00:03.000Z",
+        },
+        foreignTurn.id,
+      ),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    expect(await repository.listEvents(first.id)).toEqual([]);
+    expect(await repository.listUsage(first.id)).toEqual([]);
+    expect(await repository.getAttempt(first.id)).toMatchObject({
+      lastEventSequence: 0,
+      lastEventHash: GENESIS_EVENT_HASH,
+      competitionTokens: 0,
+      actualCostNanoUsd: 0,
     });
   });
 });

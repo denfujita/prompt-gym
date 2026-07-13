@@ -31,7 +31,18 @@ const promptSuggestions: Record<Challenge["slug"], string[]> = {
   ],
 };
 
+const promptPlaceholders: Record<Challenge["slug"], string> = {
+  "signal-vault": "What should your AI test next?",
+  "rigged-race": "What should your AI investigate next?",
+  "clone-the-gremlin": "What should your AI probe or fix next?",
+};
+
 export function ArenaClient({ challenge }: { challenge: Challenge }) {
+  const playMode = challenge.playMode === "build" ? "Build" : "Puzzle";
+  const coachingCue =
+    playMode === "Build"
+      ? "Tell the AI what behavior to probe, implement, or test next."
+      : "Tell the AI what to inspect, compare, or test next.";
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [events, setEvents] = useState<RunEvent[]>(() =>
     apiMode === "demo" ? initialArenaEvents[challenge.slug] : [],
@@ -230,6 +241,7 @@ export function ArenaClient({ challenge }: { challenge: Challenge }) {
               {challenge.symbol}
             </span>
             <div>
+              <span className="arena-mode-kicker">{playMode} · you coach</span>
               <h1>{challenge.name}</h1>
               <p>{connectionNote}</p>
             </div>
@@ -249,7 +261,7 @@ export function ArenaClient({ challenge }: { challenge: Challenge }) {
           role="tab"
           aria-selected={activeTab === "task"}
         >
-          Task
+          {playMode}
         </button>
         <button
           className={activeTab === "model" ? "is-active" : ""}
@@ -257,9 +269,31 @@ export function ArenaClient({ challenge }: { challenge: Challenge }) {
           role="tab"
           aria-selected={activeTab === "model"}
         >
-          Model <span aria-hidden="true">· {events.length}</span>
+          AI activity <span aria-hidden="true">· {events.length}</span>
         </button>
       </div>
+
+      {solved ? (
+        <div className="shell arena-reward" role="status">
+          <span className="arena-reward-mark" aria-hidden="true">
+            ✓
+          </span>
+          <div>
+            <small>{playMode === "Build" ? "Verified build" : "Case cracked"} · exact verifier passed</small>
+            <strong>
+              {playMode === "Build" ? "Your build passed" : "You solved it"} in {formatTokens(tokens)} tokens.
+            </strong>
+            <p>
+              {attempt?.mode === "ranked"
+                ? "Your score is locked. See where the tokens went and how you rank on this exact instance."
+                : "Your practice result is ready. See where the tokens went; the leaderboard is unchanged."}
+            </p>
+          </div>
+          <Link className="button button-dark" href={`/results/${attempt?.id ?? `demo-${challenge.slug}`}`}>
+            See score & rank →
+          </Link>
+        </div>
+      ) : null}
 
       <div className="arena-grid">
         <section
@@ -267,19 +301,23 @@ export function ArenaClient({ challenge }: { challenge: Challenge }) {
           aria-label="Task view"
         >
           <div className="panel-head">
-            <h2>Task view</h2>
-            <small>Human controls disabled</small>
+            <h2>{playMode} workspace</h2>
+            <small>AI-controlled · watch only</small>
           </div>
           <div className="task-panel-body">
             <div className="challenge-brief">
-              <p>
-                <strong>Objective:</strong> {challenge.objective}{" "}
-                {briefExpanded
-                  ? `You have ${challenge.timeLimitMinutes} minutes, ${challenge.actionLimit} task actions, and six coaching prompts. The complete brief is already included in the model context.`
-                  : ""}
-              </p>
+              <div>
+                <small>Your mission</small>
+                <strong>{challenge.objective}</strong>
+                <p>
+                  {coachingCue}{" "}
+                  {briefExpanded
+                    ? `You have ${challenge.timeLimitMinutes} minutes, ${challenge.actionBudgetLabel}, and six coaching prompts. The AI already has the complete task brief.`
+                    : ""}
+                </p>
+              </div>
               <button type="button" onClick={() => setBriefExpanded((value) => !value)}>
-                {briefExpanded ? "Show less" : "Full brief"}
+                {briefExpanded ? "Show less" : "How this run works"}
               </button>
             </div>
             <TaskView
@@ -296,8 +334,8 @@ export function ArenaClient({ challenge }: { challenge: Challenge }) {
           aria-label="Model activity"
         >
           <div className="panel-head">
-            <h2>Model activity</h2>
-            <small>Visible messages & actions only</small>
+            <h2>AI activity</h2>
+            <small>Messages · actions · token cost</small>
           </div>
           <div className="timeline" ref={timelineRef} aria-live="polite">
             {displayedEvents.map((event) => (
@@ -333,22 +371,36 @@ export function ArenaClient({ challenge }: { challenge: Challenge }) {
 
       <div className="prompt-dock">
         <form className="prompt-form" onSubmit={handleSubmit}>
-          <div className="prompt-input-wrap">
-            <textarea
-              aria-label="Coaching prompt"
-              className="prompt-input"
-              disabled={!attempt || running || solved}
-              maxLength={900}
-              onChange={(event) => setPrompt(event.target.value)}
-              onKeyDown={(event) => {
-                if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
-                  event.currentTarget.form?.requestSubmit();
-              }}
-              placeholder={solved ? "Exact solve verified." : "Coach the model’s next move…"}
-              rows={2}
-              value={prompt}
-            />
-            <span className="prompt-count">{prompt.length}/900</span>
+          <div className="prompt-input-stack">
+            <div className="prompt-guidance">
+              <strong>
+                {solved
+                  ? "Verified solve"
+                  : running
+                    ? "The AI is working"
+                    : turn === 0
+                      ? "Give the AI its first direction"
+                      : "Review what changed, then coach the next move"}
+              </strong>
+              <span>{solved ? "Your score is ready." : coachingCue}</span>
+            </div>
+            <div className="prompt-input-wrap">
+              <textarea
+                aria-label="Coaching prompt"
+                className="prompt-input"
+                disabled={!attempt || running || solved}
+                maxLength={900}
+                onChange={(event) => setPrompt(event.target.value)}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
+                    event.currentTarget.form?.requestSubmit();
+                }}
+                placeholder={solved ? "Exact solve verified." : promptPlaceholders[challenge.slug]}
+                rows={2}
+                value={prompt}
+              />
+              <span className="prompt-count">{prompt.length}/900</span>
+            </div>
           </div>
           <div className="prompt-actions">
             {running ? (
@@ -356,7 +408,7 @@ export function ArenaClient({ challenge }: { challenge: Challenge }) {
                 Stop turn
               </button>
             ) : null}
-            {turn >= 2 && !solved ? (
+            {turn >= 2 && !running && !solved ? (
               <button className="button button-ghost" onClick={useHint} type="button">
                 {assisted ? "Hint loaded" : "Use hint"}
               </button>
@@ -380,7 +432,7 @@ export function ArenaClient({ challenge }: { challenge: Challenge }) {
           </div>
         </form>
         <div className="prompt-footnote">
-          <span>You can prompt only. Task controls belong to the model.</span>
+          <span>You write directions. The AI alone controls the {playMode.toLowerCase()}.</span>
           <span>
             {!attempt
               ? "Preparing run…"

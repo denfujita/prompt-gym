@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const CHALLENGE_KINDS = ["visual", "artifact", "data"] as const;
+export const CHALLENGE_PLAY_MODES = ["puzzle", "build"] as const;
 export const ATTEMPT_STATUSES = [
   "created",
   "ready",
@@ -36,6 +37,7 @@ export const RUN_EVENT_TYPES = [
 ] as const;
 
 export type ChallengeKind = (typeof CHALLENGE_KINDS)[number];
+export type ChallengePlayMode = (typeof CHALLENGE_PLAY_MODES)[number];
 export type AttemptStatus = (typeof ATTEMPT_STATUSES)[number];
 export type TurnStatus = (typeof TURN_STATUSES)[number];
 export type RunEventActor = (typeof RUN_EVENT_ACTORS)[number];
@@ -58,11 +60,19 @@ export interface ChallengeManifest {
   version: string;
   title: string;
   shortDescription: string;
+  /** Short story shown to the player. Never use this as model instruction text. */
+  playerBrief: string;
+  /** Exact, player-readable condition the deterministic verifier checks. */
+  winCondition: string;
+  /** Complete task instruction placed in the model context. */
   brief: string;
   kind: ChallengeKind;
+  playMode: ChallengePlayMode;
   accent: ChallengeAccent;
   difficulty: "hard" | "expert";
   estimatedMinutes: number;
+  /** Player-readable total task budget, such as "24 control actions" or "18 oracle probes". */
+  actionBudgetLabel: string;
   maxPrompts: number;
   maxToolActionsPerTurn: number;
   maxCompetitionTokens: number;
@@ -129,6 +139,8 @@ export interface Turn {
 export interface RunEvent {
   id: string;
   attemptId: string;
+  /** Durable link to the human turn that caused this event, when applicable. */
+  turnId?: string;
   sequence: number;
   actor: RunEventActor;
   type: RunEventType;
@@ -140,6 +152,8 @@ export interface RunEvent {
 }
 export interface UsageV1 {
   schemaVersion: "usage.v1";
+  /** Populated by storage when this provider call belongs to a persisted turn. */
+  turnId?: string;
   provider: "openai" | "scripted";
   providerResponseId: string;
   resolvedModel: string;
@@ -156,6 +170,8 @@ export interface UsageV1 {
   createdAt: string;
 }
 export interface VerificationResult {
+  /** Populated by storage when this check belongs to a persisted turn. */
+  turnId?: string;
   passed: boolean;
   verifierDigest: string;
   publicFeedback: string;
@@ -209,6 +225,7 @@ export interface EligibilityRecord {
 }
 export interface EpisodeEventV1 {
   sequence: number;
+  turnId?: string;
   actor: RunEventActor;
   type: RunEventType;
   payload: Record<string, JsonValue>;
@@ -236,7 +253,7 @@ export interface EpisodeV1 {
   };
   events: EpisodeEventV1[];
   usage: UsageV1[];
-  outcome: { passed: boolean; verifierDigest: string; artifactHashes: string[] };
+  outcome: { passed: boolean; turnId?: string; verifierDigest: string; artifactHashes: string[] };
   baselineEpisodeIds: string[];
   qualityFlags: string[];
   integrityFlags: string[];

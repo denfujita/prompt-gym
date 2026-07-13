@@ -42,16 +42,27 @@ export default function ResultPage() {
     );
   }
   const challenge = getChallenge(result.challengeSlug);
+  const isBuild = challenge.playMode === "build";
+  const rewardTitle = result.solved
+    ? isBuild
+      ? "Verified Build"
+      : "Case Cracked"
+    : isBuild
+      ? "Build Attempted"
+      : "Case Still Open";
   const delta =
     result.cheapestTokens === undefined ? undefined : scoreDelta(result.tokens, result.cheapestTokens);
-  const comparison =
-    delta === undefined
+  const comparison = !result.ranked
+    ? "Practice run · your result did not enter the leaderboard."
+    : delta === undefined
       ? "Exact-instance comparison is not available yet."
-      : `${formatTokens(delta)} above the cheapest solve${result.rank === undefined ? "" : ` · rank #${result.rank}`}`;
+      : delta === 0
+        ? `Cheapest solve${result.rank === undefined ? "" : ` · rank #${result.rank}`}`
+        : `${formatTokens(delta)} above the cheapest solve${result.rank === undefined ? "" : ` · rank #${result.rank}`}`;
   const usage = [
-    ["Input", result.usage.input],
+    ["Uncached input", Math.max(0, result.usage.input - result.usage.cachedInput)],
     ["Cached input", result.usage.cachedInput],
-    ["Output", result.usage.output],
+    ["Visible output", Math.max(0, result.usage.output - result.usage.reasoning)],
     ["Reasoning", result.usage.reasoning],
   ] as const;
 
@@ -66,6 +77,18 @@ export default function ResultPage() {
             {result.solved ? "Solved" : "Finished"} in {formatTokens(result.tokens)} tokens.
           </h1>
           <p>{comparison}</p>
+          <div className={`result-reward-stamp ${isBuild ? "is-build" : "is-puzzle"}`}>
+            <span aria-hidden="true">{result.solved ? (isBuild ? "✦" : "◇") : "·"}</span>
+            <div>
+              <small>{isBuild ? "Build badge" : "Puzzle badge"}</small>
+              <strong>{rewardTitle}</strong>
+              <p>
+                {result.solved
+                  ? `Exact verifier passed in ${result.turns} coaching turn${result.turns === 1 ? "" : "s"}.`
+                  : "Return in practice mode to improve the run without changing this score."}
+              </p>
+            </div>
+          </div>
           <div className="result-stats">
             <div className="result-stat">
               <small>Competition score</small>
@@ -77,7 +100,13 @@ export default function ResultPage() {
             </div>
             <div className="result-stat">
               <small>Exact-instance rank</small>
-              <strong>{result.rank === undefined ? "Pending" : `#${result.rank}`}</strong>
+              <strong>
+                {!result.ranked
+                  ? "Practice · unranked"
+                  : result.rank === undefined
+                    ? "Pending"
+                    : `#${result.rank}`}
+              </strong>
             </div>
             <div className="result-stat">
               <small>Track</small>

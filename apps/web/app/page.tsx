@@ -32,10 +32,10 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="hero-demo" aria-label="Example Signal Vault game">
+          <div className="hero-demo" aria-label="Example Crack the Signal Vault game">
             <div className="hero-demo-card">
               <div className="demo-card-bar">
-                <span>Signal Vault · Example run</span>
+                <span>Crack the Signal Vault · Example run</span>
                 <span>{apiMode === "demo" ? "2,843 demo tokens" : "Illustrative preview"}</span>
               </div>
               <div className="demo-card-body">

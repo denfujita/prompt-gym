@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -182,6 +183,7 @@ export const turns = pgTable(
   },
   (table) => [
     uniqueIndex("turn_attempt_ordinal_uq").on(table.attemptId, table.ordinal),
+    uniqueIndex("turn_attempt_id_id_uq").on(table.attemptId, table.id),
     check("turn_prompt_length_ck", sql`char_length(${table.prompt}) between 1 and 4000`),
   ],
 );
@@ -193,6 +195,7 @@ export const runEvents = pgTable(
     attemptId: uuid("attempt_id")
       .notNull()
       .references(() => attempts.id, { onDelete: "cascade" }),
+    turnId: uuid("turn_id"),
     sequence: integer("sequence").notNull(),
     actor: eventActorEnum("actor").notNull(),
     eventType: text("event_type").notNull(),
@@ -204,6 +207,12 @@ export const runEvents = pgTable(
   (table) => [
     uniqueIndex("run_event_attempt_sequence_uq").on(table.attemptId, table.sequence),
     uniqueIndex("run_event_attempt_hash_uq").on(table.attemptId, table.hash),
+    index("run_event_turn_sequence_idx").on(table.turnId, table.sequence),
+    foreignKey({
+      name: "run_event_attempt_turn_fk",
+      columns: [table.attemptId, table.turnId],
+      foreignColumns: [turns.attemptId, turns.id],
+    }),
   ],
 );
 
@@ -214,7 +223,7 @@ export const usageItems = pgTable(
     attemptId: uuid("attempt_id")
       .notNull()
       .references(() => attempts.id, { onDelete: "cascade" }),
-    turnId: uuid("turn_id").references(() => turns.id, { onDelete: "set null" }),
+    turnId: uuid("turn_id"),
     provider: text("provider").notNull(),
     providerResponseId: text("provider_response_id").notNull(),
     resolvedModel: text("resolved_model").notNull(),
@@ -233,6 +242,12 @@ export const usageItems = pgTable(
   (table) => [
     uniqueIndex("usage_provider_response_uq").on(table.provider, table.providerResponseId),
     index("usage_attempt_idx").on(table.attemptId),
+    index("usage_turn_idx").on(table.turnId),
+    foreignKey({
+      name: "usage_item_attempt_turn_fk",
+      columns: [table.attemptId, table.turnId],
+      foreignColumns: [turns.attemptId, turns.id],
+    }),
   ],
 );
 
@@ -243,14 +258,22 @@ export const verificationRuns = pgTable(
     attemptId: uuid("attempt_id")
       .notNull()
       .references(() => attempts.id, { onDelete: "cascade" }),
-    turnId: uuid("turn_id").references(() => turns.id, { onDelete: "set null" }),
+    turnId: uuid("turn_id"),
     passed: boolean("passed").notNull(),
     verifierDigest: text("verifier_digest").notNull(),
     publicFeedback: text("public_feedback").notNull(),
     privateResultRef: text("private_result_ref"),
     verifiedAt: timestamp("verified_at", { withTimezone: true }).notNull(),
   },
-  (table) => [index("verification_attempt_idx").on(table.attemptId)],
+  (table) => [
+    index("verification_attempt_idx").on(table.attemptId),
+    index("verification_turn_idx").on(table.turnId),
+    foreignKey({
+      name: "verification_run_attempt_turn_fk",
+      columns: [table.attemptId, table.turnId],
+      foreignColumns: [turns.attemptId, turns.id],
+    }),
+  ],
 );
 
 export const creditLedger = pgTable(

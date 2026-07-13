@@ -7,12 +7,12 @@ Prompt Gym measures how efficiently a person can steer a fixed model to a determ
 ## Daily loop
 
 1. An anonymous scripted tutorial teaches the prompt-only mechanic without spending API credits.
-2. A signed-in adult receives one ranked energy pass for each of the three daily challenge families.
+2. A signed-in adult chooses a **Puzzle** or **Build** lane and receives one ranked daily start for each featured task.
 3. Starting a challenge fixes the arena, model configuration, hidden instance, price catalog, and six-turn budget.
 4. Each model call streams visible messages and tool activity. Provider-reported usage increases the token odometer.
 5. The first successful verification locks the ranked score. A hint places the run on the assisted board.
-6. The player sees their exact-seed rank and delta from the cheapest verified solve.
-7. Consented replays unlock only after the seven-day season closes and the instance retires.
+6. The player receives a deterministic **Case Cracked** or **Verified Build** reward and sees their exact-seed rank and delta from the cheapest verified solve.
+7. Consented public replays unlock only after the seven-day season closes, the instance retires, and the replay passes the redaction pipeline. Until that pipeline ships, alpha replays stay owner-only.
 
 ## Score
 
