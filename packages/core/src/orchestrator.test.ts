@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { ChallengeManifest } from "@prompt-gym/contracts";
 import { LocalDemoChallengeService } from "./challenge-service.js";
 import {
   createDefaultArena,
@@ -17,6 +18,49 @@ import { InMemoryPromptGymRepository, RunEventHub } from "./repository.js";
 import { PromptGymError } from "./errors.js";
 
 const fixedClock = { now: () => new Date("2026-07-12T12:00:00.000Z") };
+
+const benchmarkProfile = {
+  schemaVersion: "benchmark.v1",
+  family: "kernelbench-compatible",
+  source: {
+    name: "KernelBench",
+    upstreamCommit: "test-commit",
+    license: "MIT",
+    taskId: "level1-1",
+    contamination: "public_benchmark_practice",
+  },
+  maxEvaluations: 3,
+  evaluatorProfileDigest: "sha256:evaluator",
+  environmentProfileDigest: "sha256:environment",
+  hardwareProfile: "test-gpu",
+  backend: "triton",
+  precision: "fp16",
+  score: {
+    metricId: "speedup_ppm",
+    direction: "maximize",
+    correctnessGate: "all_hidden_cases",
+    bronzeThresholdPpm: "0",
+    silverThresholdPpm: "1000000",
+    goldThresholdPpm: "2000000",
+    tieBreaker: "competition_tokens",
+  },
+} as const satisfies NonNullable<ChallengeManifest["benchmark"]>;
+
+class BenchmarkPreviewChallengeService extends LocalDemoChallengeService {
+  override async listChallenges(): Promise<ChallengeManifest[]> {
+    const base = (await super.listChallenges())[0]!;
+    return [
+      {
+        ...base,
+        slug: "kernel-sprint",
+        title: "Kernel Sprint",
+        kind: "artifact",
+        playMode: "build",
+        benchmark: benchmarkProfile,
+      },
+    ];
+  }
+}
 
 class NoopProvider implements ModelProvider {
   readonly name = "scripted" as const;
@@ -71,6 +115,26 @@ describe("ranked release gate", () => {
 });
 
 describe("Prompt Gym run engine", () => {
+  it("fails closed instead of routing benchmark manifests through Daily Gym", async () => {
+    const repository = new InMemoryPromptGymRepository();
+    const service = new PromptGymService(
+      repository,
+      new BenchmarkPreviewChallengeService(),
+      createDefaultArena(fixedClock.now()),
+      new RunEventHub(),
+      "assign",
+      "handle",
+      fixedClock,
+    );
+
+    await expect(service.listChallenges()).resolves.toMatchObject({ challenges: [] });
+    await expect(
+      service.createAttempt({ id: "benchmark-user" }, "kernel-sprint", false),
+    ).rejects.toMatchObject({
+      code: "BENCHMARK_NOT_ENABLED",
+    });
+  });
+
   it("keeps local fallback attempts unranked and solves through visible tools", async () => {
     const repository = new InMemoryPromptGymRepository();
     const service = new PromptGymService(

@@ -31,6 +31,9 @@ export const RUN_EVENT_TYPES = [
   "tool.started",
   "tool.completed",
   "task.state",
+  "evaluation.queued",
+  "evaluation.started",
+  "evaluation.completed",
   "usage.recorded",
   "verification.completed",
   "hint.unlocked",
@@ -44,6 +47,128 @@ export type RunEventActor = (typeof RUN_EVENT_ACTORS)[number];
 export type RunEventType = (typeof RUN_EVENT_TYPES)[number];
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
+export const BENCHMARK_TIERS = ["invalid", "bronze", "silver", "gold"] as const;
+export type BenchmarkTier = (typeof BENCHMARK_TIERS)[number];
+
+export interface KernelBenchmarkProfileV1 {
+  schemaVersion: "benchmark.v1";
+  family: "kernelbench-compatible";
+  source: {
+    name: string;
+    upstreamCommit: string;
+    license: string;
+    taskId: string;
+    /** Public manifests only describe exposed practice. Sealed classification stays private. */
+    contamination: "public_benchmark_practice";
+  };
+  maxEvaluations: number;
+  evaluatorProfileDigest: string;
+  environmentProfileDigest: string;
+  hardwareProfile: string;
+  backend: "cuda" | "triton";
+  precision: string;
+  score: {
+    metricId: "speedup_ppm";
+    direction: "maximize";
+    correctnessGate: "all_hidden_cases";
+    bronzeThresholdPpm: "0";
+    silverThresholdPpm: "1000000";
+    goldThresholdPpm: "2000000";
+    tieBreaker: "competition_tokens";
+  };
+}
+
+const benchmarkEvaluatorBaseSchema = {
+  schemaVersion: z.literal("benchmark-evaluator-result.v1"),
+  candidateSha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  evaluatorProfileDigest: z.string().min(8).max(160),
+  environmentDigest: z.string().min(8).max(160),
+  measurementDigest: z.string().min(8).max(160),
+  publicFeedback: z.string().min(1).max(400),
+  evaluatedAt: z.string().datetime({ offset: true }),
+};
+
+const benchmarkScoreSchema = z
+  .object({
+    metricId: z.literal("speedup_ppm"),
+    valueInt: z.string().regex(/^\d+$/),
+    referenceLatencyNs: z.string().regex(/^[1-9]\d*$/),
+    candidateLatencyNs: z.string().regex(/^[1-9]\d*$/),
+  })
+  .strict();
+
+export const benchmarkEvaluatorResultSchema = z
+  .discriminatedUnion("outcome", [
+    z
+      .object({
+        ...benchmarkEvaluatorBaseSchema,
+        outcome: z.literal("incorrect"),
+        correctness: z
+          .object({
+            passed: z.literal(false),
+            casesPassed: z.number().int().nonnegative(),
+            casesTotal: z.number().int().positive(),
+          })
+          .strict(),
+      })
+      .strict(),
+    z
+      .object({
+        ...benchmarkEvaluatorBaseSchema,
+        outcome: z.literal("correct"),
+        correctness: z
+          .object({
+            passed: z.literal(true),
+            casesPassed: z.number().int().positive(),
+            casesTotal: z.number().int().positive(),
+          })
+          .strict(),
+        score: benchmarkScoreSchema,
+      })
+      .strict(),
+  ])
+  .superRefine((value, context) => {
+    if (value.correctness.casesPassed > value.correctness.casesTotal) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["correctness", "casesPassed"],
+        message: "casesPassed cannot exceed casesTotal",
+      });
+    }
+    if (value.outcome === "correct" && value.correctness.casesPassed !== value.correctness.casesTotal) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["correctness"],
+        message: "correct benchmark results must pass every case",
+      });
+    }
+  });
+
+export type BenchmarkEvaluatorResultV1 = z.infer<typeof benchmarkEvaluatorResultSchema>;
+type IncorrectBenchmarkEvaluatorResultV1 = Extract<BenchmarkEvaluatorResultV1, { outcome: "incorrect" }>;
+type CorrectBenchmarkEvaluatorResultV1 = Extract<BenchmarkEvaluatorResultV1, { outcome: "correct" }>;
+
+interface BenchmarkEvaluationBaseV1 {
+  schemaVersion: "benchmark-evaluation.v1";
+  evaluationId: string;
+  turnId: string;
+  purpose: "candidate" | "final" | "audit";
+  competitionTokensAtCandidate: number;
+}
+
+/** Core-stamped durable evaluation. Evaluators never supply IDs, tiers, or token accounting. */
+export type BenchmarkEvaluationV1 =
+  | (BenchmarkEvaluationBaseV1 & {
+      eligible: false;
+      tier: "invalid";
+      result: IncorrectBenchmarkEvaluatorResultV1;
+    })
+  | (BenchmarkEvaluationBaseV1 & {
+      eligible: true;
+      tier: Exclude<BenchmarkTier, "invalid">;
+      result: CorrectBenchmarkEvaluatorResultV1;
+    });
 
 export interface ChallengeAccent {
   name: string;
@@ -78,6 +203,7 @@ export interface ChallengeManifest {
   maxCompetitionTokens: number;
   featured: boolean;
   accessibilityLabel: string;
+  benchmark?: KernelBenchmarkProfileV1;
 }
 export interface ArenaConfig {
   id: string;
@@ -196,6 +322,8 @@ export interface ChallengeToolResult {
   visibleOutput: Record<string, JsonValue>;
   publicState?: Record<string, JsonValue>;
   artifacts?: ArtifactRef[];
+  /** Untrusted evaluator measurement; core validates it and stamps durable accounting. */
+  evaluation?: BenchmarkEvaluatorResultV1;
   verification?: VerificationResult;
 }
 export interface LeaderboardEntry {

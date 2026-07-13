@@ -113,6 +113,46 @@ describe("EpisodeV1 export", () => {
     );
   });
 
+  it("fails closed for benchmark trajectories until EpisodeV2 exists", () => {
+    const value = input();
+    expect(() =>
+      buildEpisodeV1({
+        ...value,
+        challenge: {
+          ...value.challenge,
+          kind: "artifact",
+          playMode: "build",
+          benchmark: {
+            schemaVersion: "benchmark.v1",
+            family: "kernelbench-compatible",
+            source: {
+              name: "KernelBench",
+              upstreamCommit: "test-commit",
+              license: "MIT",
+              taskId: "level1-1",
+              contamination: "public_benchmark_practice",
+            },
+            maxEvaluations: 3,
+            evaluatorProfileDigest: "sha256:evaluator",
+            environmentProfileDigest: "sha256:environment",
+            hardwareProfile: "test-gpu",
+            backend: "triton",
+            precision: "fp16",
+            score: {
+              metricId: "speedup_ppm",
+              direction: "maximize",
+              correctnessGate: "all_hidden_cases",
+              bronzeThresholdPpm: "0",
+              silverThresholdPpm: "1000000",
+              goldThresholdPpm: "2000000",
+              tieBreaker: "competition_tokens",
+            },
+          },
+        },
+      }),
+    ).toThrow(/EpisodeV2/);
+  });
+
   it("emits deterministic JSONL and checksums", () => {
     const episode = buildEpisodeV1(input());
     const first = buildEpisodeJsonlRelease([episode], "2026-07-13T00:00:00Z");

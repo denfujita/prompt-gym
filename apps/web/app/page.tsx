@@ -161,6 +161,25 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section className="section benchmark-home-section">
+        <div className="shell benchmark-home-band">
+          <div className="benchmark-home-mark" aria-hidden="true">
+            ⚡
+          </div>
+          <div>
+            <span className="eyebrow">Scripted preview · Benchmark Lab</span>
+            <h2>How far can you push the same model?</h2>
+            <p>
+              Preview a future competition where you coach the AI through verified coding benchmarks, reach
+              the strongest performance band, then win by spending fewer tokens.
+            </p>
+          </div>
+          <Link className="button button-dark" href="/benchmarks">
+            Preview the lab <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </section>
+
       <section className="section">
         <div className="shell">
           <div className="cta-band">

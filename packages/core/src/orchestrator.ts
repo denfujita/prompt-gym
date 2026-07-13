@@ -110,7 +110,11 @@ export class PromptGymService {
   async listChallenges(
     userId?: string,
   ): Promise<{ challenges: ChallengeManifest[]; arena: ArenaConfig; energy: EnergyStatus }> {
-    const challenges = await this.challengeService.listChallenges();
+    // Benchmark manifests use a different iterative state machine and leaderboard.
+    // Keep them out of Daily Gym until that path is implemented and release-gated.
+    const challenges = (await this.challengeService.listChallenges()).filter(
+      (challenge) => challenge.benchmark === undefined,
+    );
     const now = this.clock.now();
     const seasonOpen = now >= new Date(this.arena.startsAt) && now < new Date(this.arena.endsAt);
     return {
@@ -126,6 +130,13 @@ export class PromptGymService {
   async getChallenge(slug: string): Promise<ChallengeManifest> {
     const challenge = (await this.challengeService.listChallenges()).find((item) => item.slug === slug);
     if (!challenge) throw new PromptGymError("NOT_FOUND", "Challenge not found", 404);
+    if (challenge.benchmark) {
+      throw new PromptGymError(
+        "BENCHMARK_NOT_ENABLED",
+        "Live Benchmark Lab runs are not enabled; the current experience is a scripted preview",
+        409,
+      );
+    }
     return challenge;
   }
 

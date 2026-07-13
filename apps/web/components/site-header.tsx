@@ -6,9 +6,10 @@ import { usePathname } from "next/navigation";
 import { Brand } from "./brand";
 
 const nav = [
-  { href: "/play", label: "Daily gym" },
-  { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/profile", label: "Profile" },
+  { href: "/play", label: "Daily Gym", shortLabel: "Daily", symbol: "◇" },
+  { href: "/benchmarks", label: "Benchmark Lab", shortLabel: "Lab", symbol: "⚡" },
+  { href: "/leaderboard", label: "Leaderboard", shortLabel: "Board", symbol: "↗" },
+  { href: "/profile", label: "Profile", shortLabel: "Me", symbol: "●" },
 ];
 
 export function SiteHeader() {
@@ -47,10 +48,8 @@ export function MobileDock() {
           href={item.href}
           key={item.href}
         >
-          <span aria-hidden="true">
-            {item.href === "/play" ? "◇" : item.href === "/leaderboard" ? "↗" : "●"}
-          </span>
-          {item.label}
+          <span aria-hidden="true">{item.symbol}</span>
+          {item.shortLabel}
         </Link>
       ))}
     </nav>

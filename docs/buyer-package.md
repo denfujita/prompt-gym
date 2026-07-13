@@ -11,6 +11,8 @@ Prompt Gym does not market a prompt dump. A pilot package is a reproducible set 
 - Immutable manifest, checksums, schema, data dictionary, data card, provenance and contamination reports, consent-rights memo, redaction report, and tombstone delta.
 - Hosted access to a separate sealed evaluator; private fixtures and verifier internals are never delivered.
 
+Public benchmark-practice trajectories are excluded from the initial three-family Grade-A package by default. If a design partner requests them, they ship as a separately labeled `EpisodeV2` collection with task rights, upstream provenance, environment digests, and an explicit contamination report; they are never substituted for hosted sealed evaluation.
+
 ## Measurement language
 
 Reports include observed steering lift, success-adjusted tokens to solve, turn-by-turn repair rate, conditional token savings, confidence intervals, and known selection effects. They do not claim causal uplift, guaranteed human authorship, anonymity, contamination-free exposed instances, guaranteed model improvement, or reversibility after model training.

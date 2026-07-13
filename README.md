@@ -2,7 +2,7 @@
 
 Coach an AI. Spend fewer tokens. Climb the board.
 
-Prompt Gym is a mobile-first daily coaching arcade. Players cannot manipulate a challenge directly: they prompt a pinned model, watch its visible actions, and compete to reach an exact verifier using the fewest provider-reported tokens.
+Prompt Gym is a mobile-first AI coaching arcade. Players cannot manipulate a challenge directly: they prompt a pinned model and watch its visible actions. Daily Gym ranks exact solves by the fewest provider-reported tokens; Benchmark Lab ranks the highest verified performance band, then token efficiency.
 
 This public repository contains the product UI, orchestration API, scoring and accounting rules, shared contracts, and data-governance documentation. Procedural generators, hidden instances, and verifiers live in a separate private repository and are delivered to the worker as pinned challenge-service images.
 
@@ -12,6 +12,7 @@ This public repository contains the product UI, orchestration API, scoring and a
 - **Copy the Gremlin** — reproduce a black-box command-line tool against private behavioral tests.
 - **Who Rigged the Race?** — investigate synthetic race telemetry and submit an exact evidence-backed answer.
 - Prompt-only coaching, live event playback, exact token accounting, per-instance leaderboards, delayed opt-in replays, and separate commercial-data consent.
+- A scripted **Kernel Sprint** Benchmark Lab walkthrough showing iterative, correctness-gated GPU optimization. It uses no API or GPU; the ranked evaluator is a documented release gate.
 - A scripted local provider and in-memory persistence so the full experience runs without cloud credentials.
 - A real OpenAI Responses API adapter for `gpt-5.6-terra` when `OPENAI_API_KEY` is configured.
 
@@ -44,7 +45,7 @@ npm test
 npm run build
 ```
 
-See [the architecture](docs/architecture.md), [Puzzle and Build gameplay](docs/gameplay-v2.md), [prompt storage](docs/prompt-storage.md), [product contract](docs/product-spec.md), [pricing and subsidy policy](docs/pricing-and-subsidy.md), [data governance](docs/data-governance.md), [security model](docs/security.md), [deployment runbook](docs/deployment.md), and [research basis](docs/research-basis.md).
+See [the architecture](docs/architecture.md), [Puzzle and Build gameplay](docs/gameplay-v2.md), [Benchmark Lab contract](docs/benchmark-lab.md), [prompt storage](docs/prompt-storage.md), [product contract](docs/product-spec.md), [pricing and subsidy policy](docs/pricing-and-subsidy.md), [data governance](docs/data-governance.md), [security model](docs/security.md), [deployment runbook](docs/deployment.md), and [research basis](docs/research-basis.md).
 
 ## License
 

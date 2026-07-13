@@ -51,6 +51,20 @@ export default function PlayPage() {
 
       <LobbyClient />
 
+      <section className="benchmark-entry-banner" aria-labelledby="benchmark-entry-title">
+        <div>
+          <span className="eyebrow">Want the hard mode preview?</span>
+          <h2 id="benchmark-entry-title">Push a pinned model beyond its one-shot benchmark score.</h2>
+          <p>
+            See the scripted Kernel Sprint walkthrough: correctness unlocks a performance band, then fewer
+            tokens wins inside that band. No model or GPU is called yet.
+          </p>
+        </div>
+        <Link className="button button-dark" href="/benchmarks">
+          Preview Benchmark Lab <span aria-hidden="true">→</span>
+        </Link>
+      </section>
+
       <section className="lobby-bottom">
         <article className="surface history-card">
           <h3>Your recent form</h3>

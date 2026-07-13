@@ -16,6 +16,8 @@ attempt
 
 This is the minimum useful unit for lab data: one human instruction, the resulting behavior, its exact cost, and its reward.
 
+The Benchmark Lab target adds `benchmark_evaluation` as a separate turn-linked projection for candidate, correctness, performance metric, and token checkpoint. It is not implemented yet and remains distinct so an iterative candidate check cannot masquerade as terminal verification.
+
 ## Current privacy gap
 
 The alpha still stores the raw prompt in three PostgreSQL values: `turn.prompt`, the serialized `turn.state`, and the public payload of `turn.queued`. Those rows are deleted through the account-deletion cascade and export code redacts common PII and secret patterns, but the application does not yet provide field-level prompt encryption or the promised 30-day quarantine deletion.

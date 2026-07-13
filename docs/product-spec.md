@@ -20,12 +20,17 @@ Prompt Gym measures how efficiently a person can steer a fixed model to a determ
 
 Rankings never compare different challenge versions, instance seeds, resolved model snapshots, reasoning settings, tool schemas, or sandbox images. Equal token totals share rank; elapsed time is not a tie-breaker.
 
+## Benchmark Lab
+
+Benchmark Lab is a separate top-level competition mode for iterative, objectively graded coding tasks. Correctness gates every score. The daily Kernel Sprint board ranks a player's highest Prompt Gym performance band—Bronze, Silver, or Gold—then fewer provider-reported tokens at the candidate checkpoint. A later, worse experiment does not erase the best eligible artifact. The server independently reruns the selected artifact before finalizing a ranked entry.
+
+The public demo is a fixed scripted walkthrough: entered text is displayed but does not affect its sample results, and no model or GPU is called. Live ranked play remains gated on the dedicated GPU evaluator and storage described in [benchmark-lab.md](benchmark-lab.md).
+
 ## Limits
 
-- Six coaching prompts per ranked run.
-- Eight model tool actions per turn.
-- 20,000 competition tokens, ten minutes, or $0.25 actual API cost per run.
-- One concurrent live run and three ranked starts per account per day.
+- Daily Gym: six coaching prompts, eight model tool actions per turn, 20,000 competition tokens, ten minutes, or $0.25 actual API cost per run.
+- Benchmark Lab target: six coaching prompts, three candidate evaluations, 15,000 competition tokens, ten minutes, and a separately reserved GPU-spend ceiling.
+- One concurrent live run and the published ranked-start allowance for each mode.
 - $0.75 per-account and $100 global daily alpha spend ceilings.
 
 ## Accessibility and healthy use

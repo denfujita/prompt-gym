@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     template: "%s · Prompt Gym",
   },
   description:
-    "A daily coaching arcade where you guide an AI through hard, verifiable challenges and compete to solve them with the fewest tokens.",
+    "An AI coaching arcade where exact puzzles reward fewer tokens, with a scripted preview of future coding benchmark competitions.",
   openGraph: {
     title: "Prompt Gym",
     description: "Coach an AI. Spend fewer tokens. Climb the board.",

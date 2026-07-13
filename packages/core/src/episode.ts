@@ -64,6 +64,13 @@ function sanitize(value: JsonValue, state: { redacted: boolean }): JsonValue {
 }
 
 export function buildEpisodeV1(input: EpisodeBuildInput): EpisodeV1 {
+  if (input.challenge.benchmark) {
+    throw new PromptGymError(
+      "BENCHMARK_NOT_ENABLED",
+      "Benchmark trajectories require the separate EpisodeV2 export contract",
+      409,
+    );
+  }
   if (!input.consent.research || input.consent.withdrawnAt) {
     throw new PromptGymError("CONFLICT", "This run is not permitted for research export", 409);
   }

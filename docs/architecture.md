@@ -30,6 +30,12 @@ The core depends on repository, queue, provider, and challenge-service interface
 
 Implemented now: PostgreSQL durability, transactional queued turns, per-turn trajectory lineage, idempotent usage-and-score accounting, BullMQ recovery, worker-owned model/tool orchestration, replayable SSE, and the OpenAI/private-service adapters. The encrypted prompt vault, R2 post-season archival, and separately deployed Modal executor/verifier are deployment gates, not silently emulated by the local adapter. See [prompt-storage.md](prompt-storage.md).
 
+## Benchmark evaluation target
+
+Benchmark Lab reuses attempts, turns, provider usage, events, consent, and replay but adds immutable candidate artifacts, non-terminal benchmark evaluations, and a separate performance-band leaderboard. GPU work uses a dedicated `prompt-gym-gpu-evals` queue and private coordinator; it never shares the model-call worker's concurrency pool. The evaluator runs correctness before timing in a fresh, networkless, pinned GPU environment and independently reruns the selected artifact before finalization.
+
+The public contracts and scripted page are implemented scaffolding. The GPU queue, `benchmark_evaluation` and `benchmark_leaderboard_entry` tables, artifact archive, environment attestation, and live evaluator are ranked-release gates. See [benchmark-lab.md](benchmark-lab.md) for the lifecycle and storage schema.
+
 ## Run state machine
 
 `ready -> running -> awaiting_player -> solved | failed | budget_exhausted | cancelled | expired`

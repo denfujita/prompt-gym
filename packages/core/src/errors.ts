@@ -12,6 +12,7 @@ export type PromptGymErrorCode =
   | "GLOBAL_CIRCUIT_OPEN"
   | "PROVIDER_AMBIGUOUS"
   | "PROVIDER_ERROR"
+  | "BENCHMARK_NOT_ENABLED"
   | "CHALLENGE_ERROR";
 
 export class PromptGymError extends Error {

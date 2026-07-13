@@ -26,3 +26,9 @@ The lifecycle below is the ranked-release policy. The current alpha has consent-
 An export carries task/version hashes, arena configuration, ordered human/model/tool/verifier events, provider usage, frozen cost, artifacts, outcome, baseline linkage, provenance, quality flags, consent, and deletion state. It excludes account identifiers, IP/device data, hidden seeds, private fixtures, verifier source, and private reasoning.
 
 Releases are immutable JSONL and Parquet snapshots with checksums, manifests, data cards, provenance and contamination reports, rights memos, and additive tombstone files. Prompt Gym describes results as observed human steering lift, not causal uplift or guaranteed human authorship.
+
+## Benchmark practice data
+
+Any benchmark task, prompt, artifact, result, or replay exposed through gameplay is labeled `public_benchmark_practice`. It may be useful for studying human steering on known tasks, but it is never described as sealed, uncontaminated, or Grade-A evaluation data and does not enter the initial Puzzle/Build design-partner package by default.
+
+Sealed benchmark-compatible instances, templates, and pool classification remain private and are offered only through hosted evaluation. Public manifests never advertise sealed membership. Benchmark trajectory exports use a versioned `EpisodeV2` schema with candidate hashes, evaluation lineage, token checkpoints, exact environment and measurement digests, selected-best linkage, and task-license provenance.
